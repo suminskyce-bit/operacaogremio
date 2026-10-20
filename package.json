@@ -1,0 +1,16 @@
+{
+  "name": "operacao-gremio-mesquita",
+  "version": "1.0.1",
+  "description": "Operação Grêmio — Mesquita: jogo web de Kanban e educação financeira do Grêmio Estudantil da Escola Técnica Mesquita.",
+  "private": true,
+  "license": "UNLICENSED",
+  "scripts": {
+    "start": "node tools/servidor.js",
+    "build": "node tools/preparar-publicacao.js",
+    "preview": "node tools/preparar-publicacao.js && node tools/servidor.js public",
+    "arquivo-unico": "node tools/gerar-arquivo-unico.js",
+    "test": "node --test",
+    "test:e2e": "node tests/e2e/interface.e2e.js",
+    "simular": "node tests/simulacao.js"
+  }
+}

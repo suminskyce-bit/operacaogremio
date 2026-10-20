@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Operação Grêmio — Mesquita: jogo de Kanban e educação financeira do Grêmio Estudantil da Escola Técnica Mesquita.">
+  <meta name="theme-color" content="#8034a0">
+  <title>Operação Grêmio — Mesquita</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%238034a0'/%3E%3Crect x='10' y='14' width='12' height='36' rx='3' fill='%23fff'/%3E%3Crect x='26' y='14' width='12' height='26' rx='3' fill='%23ffc83d'/%3E%3Crect x='42' y='14' width='12' height='18' rx='3' fill='%23fff'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="css/estilo.css">
+</head>
+<body>
+  <div id="app">
+    <noscript>
+      <p style="color:#fff;padding:24px;font-family:sans-serif">Este jogo precisa de JavaScript. Ative o JavaScript no navegador para jogar.</p>
+    </noscript>
+  </div>
+  <div id="modal-raiz"></div>
+  <div id="avisos" class="avisos" aria-live="polite"></div>
+
+  <!-- Núcleo (regras) e dados: carregados nesta ordem. Os testes leem esta lista. -->
+  <script src="js/nucleo/util.js"></script>
+  <script src="js/nucleo/regras.js"></script>
+  <script src="js/dados/categorias.js"></script>
+  <script src="js/dados/personagens.js"></script>
+  <script src="js/dados/projetos.js"></script>
+  <script src="js/dados/missoes.js"></script>
+  <script src="js/dados/eventos.js"></script>
+  <script src="js/nucleo/estado.js"></script>
+  <script src="js/nucleo/financas.js"></script>
+  <script src="js/nucleo/kanban.js"></script>
+  <script src="js/nucleo/eventos.js"></script>
+  <script src="js/nucleo/rodada.js"></script>
+  <script src="js/nucleo/pontuacao.js"></script>
+  <script src="js/nucleo/motor.js"></script>
+  <script src="js/nucleo/persistencia.js"></script>
+
+  <!-- Interface -->
+  <script src="js/interface/icones.js"></script>
+  <script src="js/interface/ui.js"></script>
+  <script src="js/interface/componentes.js"></script>
+  <script src="js/interface/telas.js"></script>
+  <script src="js/interface/app.js"></script>
+</body>
+</html>
