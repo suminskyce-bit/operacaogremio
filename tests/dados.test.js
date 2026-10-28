@@ -1,9 +1,9 @@
-/* Dados: nomes, catálogo conforme a especificação e coerência das missões. */
+/* Dados: nomes, catálogo conforme a especificação, pedidos, missões e durações. */
 'use strict';
 const test = require('node:test');
 const { OG, assert } = require('./ajudantes.js');
 
-test('os cinco coordenadores têm os nomes e cargos novos', () => {
+test('os cinco coordenadores têm os nomes, cargos e áreas certos', () => {
   const esperado = [
     ['Sumindo', 'Coordenador Geral'],
     ['Antune', 'Coordenador Cultural'],
@@ -12,6 +12,8 @@ test('os cinco coordenadores têm os nomes e cargos novos', () => {
     ['JV', 'Coordenador Financeiro'],
   ];
   assert.deepEqual(OG.dados.coordenadores.map((c) => [c.nome, c.cargo]), esperado);
+  const areas = Object.fromEntries(OG.dados.coordenadores.map((c) => [c.id, c.area.coringa ? 'todas' : c.area.categorias.join()]));
+  assert.deepEqual(areas, { sumindo: 'todas', antune: 'cultura', luize: 'estrutura', ryani: 'divulgacao', jv: 'logistica' });
 });
 
 test('os 13 voluntários estão corretos, na ordem oficial, e separados dos coordenadores', () => {
@@ -23,14 +25,19 @@ test('os 13 voluntários estão corretos, na ordem oficial, e separados dos coor
   OG.dados.voluntarios.forEach((v) => assert.ok(!idsCoord.includes(v.id)));
 });
 
-test('todo personagem tem especialidade com categorias válidas', () => {
-  OG.dados.coordenadores.concat(OG.dados.voluntarios).forEach((p) => {
+test('todo voluntário tem especialidade válida e toda categoria tem 2 voluntários especialistas', () => {
+  const porCategoria = {};
+  OG.dados.voluntarios.forEach((p) => {
     const e = p.especialidade;
     assert.ok(e && e.rotulo, p.nome + ' sem especialidade');
-    (e.categorias || []).forEach((c) => assert.ok(OG.dados.categorias[c], p.nome + ': categoria ' + c));
+    (e.categorias || []).forEach((c) => {
+      assert.ok(OG.dados.categorias[c], p.nome + ': categoria ' + c);
+      porCategoria[c] = (porCategoria[c] || 0) + 1;
+    });
     (e.riscos || []).forEach((r) => assert.ok(OG.dados.riscos[r], p.nome + ': risco ' + r));
     assert.ok(e.coringa || (e.categorias && e.categorias.length), p.nome + ' precisa de categoria ou coringa');
   });
+  Object.keys(OG.dados.categorias).forEach((c) => assert.equal(porCategoria[c], 2, 'especialistas em ' + c));
 });
 
 // [nome, custo, tempo, trabalhadores, retorno, prestigio, tradicao] — valores da especificação
@@ -64,19 +71,34 @@ test('o catálogo tem todos os cards da especificação com os valores exatos', 
     assert.deepEqual([p.custo, p.tempo, p.trabalhadores, p.retorno, p.prestigio, p.tradicao],
       [custo, tempo, trab, retorno, prest, trad], 'valores de ' + nome);
     assert.equal(p.novo, false);
+    assert.equal(p.tipo, 'missao');
   });
 });
 
-test('cards novos de apoio seguem a curva de custo/retorno dos originais', () => {
-  OG.dados.projetos.filter((p) => p.novo).forEach((p) => {
+test('cards novos e pedidos avulsos seguem a curva de custo/retorno dos originais', () => {
+  OG.dados.projetos.filter((p) => p.novo).concat(OG.dados.pedidos).forEach((p) => {
     const razao = p.retorno / p.custo;
     assert.ok(razao >= 2 && razao <= 2.8, p.nome + ': retorno/custo = ' + razao);
     assert.ok(p.custo % 10 === 0 && p.retorno % 10 === 0, p.nome + ': valores redondos');
   });
 });
 
-test('todo card tem retorno maior que o custo, categoria e riscos válidos', () => {
-  OG.dados.projetos.forEach((p) => {
+test('pedidos avulsos: pelo menos 20, cobrindo todas as categorias, com ids únicos', () => {
+  const pedidos = OG.dados.pedidos;
+  assert.ok(pedidos.length >= 20, 'pedidos: ' + pedidos.length);
+  pedidos.forEach((p) => {
+    assert.equal(p.tipo, 'pedido');
+    assert.ok([1, 2].includes(p.tempo) && [1, 2].includes(p.trabalhadores), p.nome);
+  });
+  Object.keys(OG.dados.categorias).forEach((cat) => {
+    assert.ok(pedidos.filter((p) => p.categoria === cat).length >= 2, 'pedidos de ' + cat);
+  });
+  const ids = OG.dados.projetos.concat(pedidos).map((p) => p.id);
+  assert.equal(new Set(ids).size, ids.length);
+});
+
+test('todo card tem retorno maior que o custo, categoria, riscos e descrição', () => {
+  OG.dados.projetos.concat(OG.dados.pedidos).forEach((p) => {
     assert.ok(p.retorno > p.custo, p.nome);
     assert.ok([1, 2].includes(p.tempo) && [1, 2].includes(p.trabalhadores), p.nome);
     assert.ok(OG.dados.categorias[p.categoria], p.nome + ' categoria');
@@ -85,7 +107,7 @@ test('todo card tem retorno maior que o custo, categoria e riscos válidos', () 
   });
 });
 
-test('as 10 missões existem, com 6 cards distintos e recompensas da especificação', () => {
+test('as 10 missões existem, com 6 cards distintos, objetivo 4 e recompensas da especificação', () => {
   const recompensas = {
     farroupilha: { dinheiro: 100, prestigio: 0, tradicao: 10 },
     junina: { dinheiro: 100, prestigio: 10, tradicao: 0 },
@@ -102,7 +124,11 @@ test('as 10 missões existem, com 6 cards distintos e recompensas da especifica�
   OG.dados.missoes.forEach((m) => {
     assert.equal(m.projetos.length, 6, m.nome);
     assert.equal(new Set(m.projetos).size, 6, m.nome + ' repetido');
-    m.projetos.forEach((id) => assert.ok(OG.dados.projetosPorId[id], m.nome + ': ' + id));
+    assert.equal(m.objetivo, 4, m.nome);
+    m.projetos.forEach((id) => {
+      assert.ok(OG.dados.projetosPorId[id], m.nome + ': ' + id);
+      assert.equal(OG.dados.projetosPorId[id].tipo, 'missao', m.nome + ': ' + id + ' não pode ser pedido avulso');
+    });
     assert.deepEqual({ ...m.recompensa }, recompensas[m.id], m.nome);
   });
 });
@@ -126,39 +152,49 @@ test('os cards citados em cada missão da especificação estão na missão', ()
   });
 });
 
-test('toda missão é possível nas 4 rodadas (cabe o objetivo nas vagas que terminam a tempo)', () => {
-  const capacidade = OG.regras.LIMITE_EM_ANDAMENTO * (OG.regras.TOTAL_RODADAS - 1);
+test('nenhum projeto de missão demora mais do que a janela da missão permite', () => {
+  // Fora da área: +1 rodada. Mesmo assim precisa caber na janela (começa na abertura, revisa até a data).
+  const janela = OG.regras.JANELA_MISSAO;
   OG.dados.missoes.forEach((m) => {
-    const tempos = m.projetos.map((id) => OG.dados.projetosPorId[id].tempo).sort((a, b) => a - b);
-    let usados = 0;
-    let n = 0;
-    tempos.forEach((t) => { if (usados + t <= capacidade) { usados += t; n++; } });
-    assert.ok(n >= m.objetivo, m.nome + ': cabem ' + n + ' projetos, objetivo ' + m.objetivo);
-    // E nenhuma missão depende de projeto mais longo do que a partida permite.
-    tempos.forEach((t) => assert.ok(t <= OG.regras.TOTAL_RODADAS - 1));
+    m.projetos.forEach((id) => {
+      const p = OG.dados.projetosPorId[id];
+      assert.ok(p.tempo + OG.regras.TEMPO_FORA_DA_AREA < janela, m.nome + ': ' + p.nome);
+    });
   });
 });
 
-test('a meta de cada missão é calculada e fica acima da pontuação inicial', () => {
-  OG.dados.missoes.forEach((m) => {
-    const meta = OG.pontuacao.metaDaMissao(m.id);
-    assert.ok(meta > 200 && meta < 320, m.nome + ': meta ' + meta);
-  });
-  assert.equal(OG.pontuacao.metaDaMissao('farroupilha'), 278);
+test('durações 4, 8, 10 e 26 rodadas, com a quantidade de missões de cada uma', () => {
+  assert.deepEqual(OG.regras.DURACOES.map((d) => [d.rodadas, d.missoes]), [[4, 1], [8, 2], [10, 3], [26, 10]]);
+  assert.equal(OG.regras.DURACAO_PADRAO, 4);
+  assert.equal(OG.regrasUtil.duracao(8).rodadas, 8);
+  assert.equal(OG.regrasUtil.duracao(5), null);
 });
 
-test('o baralho tem 8 negativos, 7 positivos e 5 despesas, sem ids repetidos', () => {
+test('o baralho tem 8 negativos, 7 positivos e 5 despesas; o evento neutro não está nele', () => {
   const tipos = OG.dados.eventos.reduce((a, e) => { a[e.tipo] = (a[e.tipo] || 0) + 1; return a; }, {});
   assert.deepEqual(tipos, { negativo: 8, positivo: 7, despesa: 5 });
+  assert.ok(!OG.dados.eventos.some((e) => e.id === OG.dados.eventoNeutro.id));
   const cartasDespesa = Object.values(OG.dados.despesas).filter((d) => d.carta !== false).map((d) => d.nome).sort();
   assert.deepEqual(cartasDespesa, ['Aluguel de Equipamento', 'Faltaram Mesas', 'Impressões de Última Hora',
     'Limpeza Extra', 'Reunião com a Diretora', 'Transporte']);
 });
 
-test('formatação de dinheiro em reais', () => {
-  assert.equal(OG.util.formatarDinheiro(50), 'R$ 50,00');
-  assert.equal(OG.util.formatarDinheiro(1234.5), 'R$ 1.234,50');
-  assert.equal(OG.util.formatarDinheiro(0), 'R$ 0,00');
-  assert.equal(OG.util.formatarDinheiroComSinal(-40), '−R$ 40,00');
-  assert.equal(OG.util.formatarDinheiroComSinal(80), '+R$ 80,00');
+test('formatação de dinheiro em reais (com espaço que não quebra a linha entre R$ e o valor)', () => {
+  const nb = ' ';
+  assert.equal(OG.util.NBSP, nb);
+  assert.equal(OG.util.formatarDinheiro(50), 'R$' + nb + '50,00');
+  assert.equal(OG.util.formatarDinheiro(1234.5), 'R$' + nb + '1.234,50');
+  assert.equal(OG.util.formatarDinheiro(0), 'R$' + nb + '0,00');
+  assert.equal(OG.util.formatarDinheiroComSinal(-40), '−R$' + nb + '40,00');
+  assert.equal(OG.util.formatarDinheiroComSinal(80), '+R$' + nb + '80,00');
+  assert.equal(OG.util.formatarDinheiroCurto(40), 'R$' + nb + '40');
+  assert.equal(OG.util.formatarDinheiroCurto(1250), 'R$' + nb + '1.250');
+  assert.equal(OG.util.formatarDinheiroCurto(12.5), 'R$' + nb + '12,50');
+});
+
+test('listas em português: "e" para somar, "ou" para alternativas', () => {
+  assert.equal(OG.util.listaPt(['a']), 'a');
+  assert.equal(OG.util.listaPt(['a', 'b', 'c']), 'a, b e c');
+  assert.equal(OG.util.listaPtOu(['a', 'b']), 'a ou b');
+  assert.equal(OG.util.listaPtOu([]), '');
 });

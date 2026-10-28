@@ -12,7 +12,7 @@
   const CHAVE_CONFIG = 'operacao-gremio-mesquita:config';
   const MODAIS_GLOBAIS = ['menu', 'como-jogar', 'config', 'confirmar'];
   const DICAS_SOLTAR = {
-    planejar: 'Solte para planejar',
+    planejar: 'Solte para escolher o responsável',
     desplanejar: 'Solte para voltar ao Backlog',
     iniciar: 'Solte para montar a equipe e iniciar',
     revisar: 'Solte para escolher quem revisa',
@@ -34,7 +34,7 @@
   const app = {
     estado: null,
     tela: 'inicio',
-    config: { caixaApertado: false },
+    config: { caixaApertado: false, duracao: 4 },
     ui: novoUi(),
     avisouSemSalvar: false,
   };
@@ -42,22 +42,25 @@
   function E() { return OG.estado; }
   function esc(v) { return OG.ui.esc(v); }
 
-  // ---------------- Configurações ----------------
+  // ---------------- Configurações (validadas: nada salvo no navegador é confiável) ----------------
 
   function carregarConfig() {
+    app.config.duracao = OG.regras.DURACAO_PADRAO;
     try {
       const texto = global.localStorage.getItem(CHAVE_CONFIG);
       if (!texto) return;
       const c = JSON.parse(texto);
-      app.config.caixaApertado = !!(c && c.caixaApertado === true);
+      if (!c || typeof c !== 'object') return;
+      app.config.caixaApertado = c.caixaApertado === true;
+      if (OG.regrasUtil.duracao(c.duracao)) app.config.duracao = c.duracao;
     } catch (erro) {
-      // Sem armazenamento: fica o padrão.
+      // Sem armazenamento (ou salvo estragado): fica o padrão.
     }
   }
 
   function salvarConfig() {
     try {
-      global.localStorage.setItem(CHAVE_CONFIG, JSON.stringify(app.config));
+      global.localStorage.setItem(CHAVE_CONFIG, JSON.stringify({ caixaApertado: app.config.caixaApertado, duracao: app.config.duracao }));
     } catch (erro) {
       // Sem armazenamento: a escolha vale só nesta sessão.
     }
@@ -88,6 +91,22 @@
     app.ui.pulsar = ['dinheiro', 'prestigio', 'tradicao'].filter(function (k) { return a[k] !== d[k]; });
   }
 
+  function avisarMissoes(antes, depois) {
+    depois.agenda.forEach(function (a, i) {
+      if (a.cumprida && !antes.agenda[i].cumprida) {
+        OG.ui.aviso('Missão cumprida: ' + E().missaoPorId(a.missaoId).nome + '! A recompensa já entrou.', 'bom');
+      }
+    });
+  }
+
+  /** Troca o estado do jogo por um novo, já validado pelo núcleo. */
+  function trocarEstado(antes, depois) {
+    app.estado = depois;
+    salvar();
+    marcarPulsos(antes, depois);
+    avisarMissoes(antes, depois);
+  }
+
   /** Aplica a ação no núcleo. `aoSucesso(antes, depois)` roda antes de renderizar. */
   function despachar(acao, aoSucesso) {
     if (!app.estado) return false;
@@ -97,14 +116,8 @@
       OG.ui.aviso(r.erro, 'erro');
       return false;
     }
-    app.estado = r.estado;
-    salvar();
-    marcarPulsos(antes, app.estado);
+    trocarEstado(antes, r.estado);
     if (aoSucesso) aoSucesso(antes, app.estado);
-    if (!antes.missaoCumprida && app.estado.missaoCumprida) {
-      const m = E().missao(app.estado);
-      OG.ui.aviso('Missão cumprida: ' + m.nome + '! A recompensa já entrou.', 'bom');
-    }
     if (app.estado.fase === 'fim' && app.tela !== 'fim') {
       irPara('fim');
       return true;
@@ -158,69 +171,122 @@
 
   // ---------------- Partida ----------------
 
-  function novaPartida(missaoId) {
-    app.estado = OG.motor.criarPartida(missaoId, novaSemente(), { caixaApertado: app.config.caixaApertado });
+  function novaPartida(missaoId, duracao, caixaApertado) {
+    app.estado = OG.motor.criarPartida({
+      missaoId: missaoId,
+      duracao: duracao,
+      semente: novaSemente(),
+      caixaApertado: caixaApertado,
+    });
     app.ui = novoUi();
     salvar();
     irPara('jogo');
   }
 
   function escolherMissao(missaoId) {
+    const duracao = app.config.duracao;
+    const caixa = app.config.caixaApertado;
     if (app.estado && app.estado.fase !== 'fim') {
-      const m = E().missao(app.estado);
+      const e = app.estado;
       confirmar({
         id: 'substituir',
         titulo: 'Começar outra partida?',
-        html: '<p>Você tem uma partida em andamento (' + esc(m.nome) + ', rodada ' + app.estado.rodada + '). Ela será substituída pela nova e não dá para recuperar.</p>',
+        html: '<p>Você tem uma partida em andamento (' + esc(OG.regrasUtil.duracao(e.config.duracao).nome) + ', rodada ' + e.rodada + ' de ' + e.config.duracao +
+          '). Ela será substituída pela nova e não dá para recuperar.</p>',
         rotulo: 'Começar nova partida',
         perigo: true,
-        acao: function () { novaPartida(missaoId); },
+        acao: function () { novaPartida(missaoId, duracao, caixa); },
       });
       return;
     }
-    novaPartida(missaoId);
+    novaPartida(missaoId, duracao, caixa);
   }
 
-  function ordemSugestao(proj) {
-    return function (a, b) {
-      const pa = (E().ehEspecialista(a, proj) ? 0 : 4) + (a.papel === 'coordenador' ? 2 : 0) + (a.somentePorEvento ? -1 : 0);
-      const pb = (E().ehEspecialista(b, proj) ? 0 : 4) + (b.papel === 'coordenador' ? 2 : 0) + (b.somentePorEvento ? -1 : 0);
-      return pa - pb || a.nome.localeCompare(b.nome, 'pt-BR');
-    };
+  // ---------- Quem vai tocar? ----------
+
+  function abrirResponsavel(cartaId, modo) {
+    const estado = app.estado;
+    const c = E().carta(estado, cartaId);
+    if (!c) return;
+    const destino = modo === 'trocar' ? null : 'afazer';
+    if (destino) {
+      const av = OG.kanban.avaliarMovimento(estado, cartaId, destino);
+      if (!av.ok) {
+        OG.ui.aviso(av.motivo, 'erro');
+        return;
+      }
+    }
+    // Ninguém vem marcado: escolher quem toca cada card é a decisão principal do jogo.
+    abrirModal({ tipo: 'responsavel', modo: modo || 'planejar', cartaId: cartaId, escolhido: null });
   }
 
-  /** Sugere a equipe: especialistas primeiro, voluntários antes dos coordenadores (que revisam). */
-  function sugerirEquipe(c, quantos) {
-    const proj = E().projetoDaCarta(c);
-    return OG.kanban.candidatos(app.estado, c).slice().sort(ordemSugestao(proj)).slice(0, quantos).map(function (p) { return p.id; });
+  function confirmarResponsavel(seguir) {
+    const m = app.ui.modal;
+    if (!m || m.tipo !== 'responsavel') return;
+    if (!m.escolhido) {
+      OG.ui.aviso('Escolha o coordenador responsável.', 'erro');
+      return;
+    }
+    const cartaId = m.cartaId;
+    const coord = E().pessoa(m.escolhido);
+    const proj = E().projetoDaCarta(E().carta(app.estado, cartaId));
+    if (m.modo === 'trocar') {
+      despachar({ tipo: 'TROCAR_RESPONSAVEL', cartaId: cartaId, responsavel: m.escolhido }, function () {
+        app.ui.modal = null;
+        app.ui.focoDepois = cartaId;
+        OG.ui.aviso(proj.nome + ': agora o responsável é ' + coord.nome + '.', 'info');
+      });
+      return;
+    }
+    despachar({ tipo: 'PLANEJAR', cartaId: cartaId, responsavel: m.escolhido }, function (antes, depois) {
+      app.ui.modal = null;
+      app.ui.focoDepois = cartaId;
+      if (seguir === 'equipe' && OG.kanban.avaliarMovimento(depois, cartaId, 'andamento').ok) {
+        app.ui.modal = novoModalEquipe(depois, cartaId, 'equipe');
+      }
+    });
+  }
+
+  // ---------- Equipe ----------
+
+  function sugestao(estado, c) {
+    const t = OG.planejador.montarEquipe(estado, c);
+    return t ? t.equipe : [];
+  }
+
+  /** A equipe começa vazia: o jogador escolhe (ou pede a sugestão no botão). */
+  function novoModalEquipe(estado, cartaId, tipo) {
+    return { tipo: tipo === 'completar' ? 'completar' : 'equipe', cartaId: cartaId, selecionados: [] };
   }
 
   function abrirEquipe(cartaId, tipo) {
     const c = E().carta(app.estado, cartaId);
     if (!c) return;
-    const proj = E().projetoDaCarta(c);
     if (tipo === 'equipe') {
       const av = OG.kanban.avaliarMovimento(app.estado, cartaId, 'andamento');
       if (!av.ok) {
         OG.ui.aviso(av.motivo, 'erro');
         return;
       }
-      abrirModal({ tipo: 'equipe', cartaId: cartaId, selecionados: sugerirEquipe(c, proj.trabalhadores) });
-    } else {
-      const falta = proj.trabalhadores - c.equipe.length;
-      abrirModal({ tipo: 'completar', cartaId: cartaId, selecionados: sugerirEquipe(c, falta) });
     }
+    abrirModal(novoModalEquipe(app.estado, cartaId, tipo));
   }
 
   function alternarPessoa(pessoaId, marcado) {
     const m = app.ui.modal;
     if (!m || (m.tipo !== 'equipe' && m.tipo !== 'completar')) return;
-    const c = E().carta(app.estado, m.cartaId);
-    const proj = E().projetoDaCarta(c);
-    const limite = m.tipo === 'completar' ? proj.trabalhadores - c.equipe.length : proj.trabalhadores;
     const sel = m.selecionados.filter(function (id) { return id !== pessoaId; });
-    if (marcado && sel.length < limite) sel.push(pessoaId);
+    if (marcado) sel.push(pessoaId);
     m.selecionados = sel;
+    render();
+  }
+
+  function sugerirEquipe() {
+    const m = app.ui.modal;
+    if (!m || (m.tipo !== 'equipe' && m.tipo !== 'completar')) return;
+    const c = E().carta(app.estado, m.cartaId);
+    m.selecionados = sugestao(app.estado, c);
+    if (!m.selecionados.length) OG.ui.aviso('Não há voluntários livres suficientes para completar a força deste projeto.', 'erro');
     render();
   }
 
@@ -240,12 +306,10 @@
         }
         estado = r.estado;
       }
-      const antes = app.estado;
-      app.estado = estado;
-      salvar();
-      marcarPulsos(antes, estado);
+      trocarEstado(app.estado, estado);
       app.ui.modal = null;
-      OG.ui.aviso('Equipe de ' + proj.nome + ' completa.', 'bom');
+      app.ui.focoDepois = c.id;
+      OG.ui.aviso('Equipe de ' + proj.nome + ' reforçada.', 'bom');
       render();
       return;
     }
@@ -257,14 +321,14 @@
     });
   }
 
-  function sugerirRevisor() {
-    const livres = E().coordenadoresLivres(app.estado);
-    if (!livres.length) return null;
-    const futuros = app.estado.cartas.filter(function (c) { return c.coluna === 'backlog' || c.coluna === 'afazer'; });
-    const utilidade = function (p) {
-      return futuros.filter(function (c) { return E().ehEspecialista(p, E().projetoDaCarta(c)); }).length;
-    };
-    return livres.slice().sort(function (a, b) { return utilidade(a) - utilidade(b); })[0].id;
+  // ---------- Revisão ----------
+
+  function sugerirRevisor(c) {
+    const estado = app.estado;
+    const possiveis = OG.kanban.revisoresPossiveis(estado, c);
+    const gratis = possiveis.filter(function (p) { return !E().projetoParadoSeRevisar(estado, p.id); });
+    const lista = gratis.length ? gratis : possiveis;
+    return lista.length ? lista[0].id : null;
   }
 
   function abrirRevisor(cartaId) {
@@ -273,7 +337,7 @@
       OG.ui.aviso(av.motivo, 'erro');
       return;
     }
-    abrirModal({ tipo: 'revisor', cartaId: cartaId, revisor: sugerirRevisor() });
+    abrirModal({ tipo: 'revisor', cartaId: cartaId, revisor: sugerirRevisor(E().carta(app.estado, cartaId)) });
   }
 
   function confirmarRevisao() {
@@ -286,9 +350,12 @@
     despachar({ tipo: 'REVISAR', cartaId: m.cartaId, revisorId: m.revisor }, function (antes, depois) {
       app.ui.modal = null;
       app.ui.focoDepois = m.cartaId;
-      OG.ui.aviso(proj.nome + ' concluído! ' + textoDelta(antes, depois) + '.', 'bom');
+      const c = E().carta(depois, m.cartaId);
+      OG.ui.aviso(proj.nome + ' concluído' + (c.noPrazo ? '' : ' com atraso') + '! ' + textoDelta(antes, depois) + '.', c.noPrazo ? 'bom' : 'info');
     });
   }
+
+  // ---------- Encerrar a rodada ----------
 
   function encerrar() {
     despachar({ tipo: 'ENCERRAR_RODADA' }, function () { app.ui.resumoFechado = null; });
@@ -298,18 +365,32 @@
     const estado = app.estado;
     if (!estado || estado.fase !== 'planejamento') return;
     const avisos = [];
+    const nome = function (c) { return E().projetoDaCarta(c).nome; };
     if (OG.kanban.mutiraoDisponivel(estado)) avisos.push('Você ainda não usou o Mutirão da Gurizada. Ele acaba no fim desta rodada.');
     const revisaveis = E().cartasNaColuna(estado, 'revisao').filter(function (c) {
       return OG.kanban.avaliarMovimento(estado, c.id, 'concluido').ok;
     });
-    if (estado.rodada === OG.regras.TOTAL_RODADAS && revisaveis.length) {
+    if (E().ultimaRodada(estado) && revisaveis.length) {
       avisos.push((revisaveis.length === 1 ? 'Ainda há 1 projeto' : 'Ainda há ' + revisaveis.length + ' projetos') + ' para revisar. Na última rodada, projeto não revisado não conta.');
+    } else {
+      const hoje = revisaveis.filter(function (c) { return c.prazo === estado.rodada; });
+      if (hoje.length) avisos.push(OG.util.listaPt(hoje.map(nome)) + ' vence' + (hoje.length > 1 ? 'm' : '') + ' nesta rodada: revisando depois, rende só metade do retorno.');
     }
-    const semEquipe = E().cartasNaColuna(estado, 'andamento').filter(function (c) {
-      return c.equipe.length < E().projetoDaCarta(c).trabalhadores;
+    const fracos = E().cartasNaColuna(estado, 'andamento').filter(function (c) {
+      return E().forcaDaCarta(c) < E().forcaNecessaria(E().projetoDaCarta(c));
     });
-    if (semEquipe.length) {
-      avisos.push(OG.util.listaPt(semEquipe.map(function (c) { return E().projetoDaCarta(c).nome; })) + ' está com a equipe incompleta e não vai avançar.');
+    if (fracos.length) avisos.push(OG.util.listaPt(fracos.map(nome)) + (fracos.length > 1 ? ' estão' : ' está') + ' sem a força completa e não vai avançar.');
+    // Gente parada: coordenador livre com card em A fazer que daria para começar agora.
+    const prontos = E().cartasNaColuna(estado, 'afazer').filter(function (c) {
+      return OG.kanban.avaliarMovimento(estado, c.id, 'andamento').ok;
+    });
+    if (prontos.length) {
+      avisos.push(OG.util.listaPt(prontos.slice(0, 3).map(function (c) { return nome(c) + ' (' + E().pessoa(c.responsavel).nome + ')'; })) +
+        (prontos.length > 1 ? ' estão prontos' : ' está pronto') + ' para começar e o responsável está livre.');
+    }
+    const urgentes = E().cartasNaColuna(estado, 'backlog').filter(function (c) { return E().farolDoPrazo(estado, c) === 'urgente'; });
+    if (urgentes.length) {
+      avisos.push(OG.util.listaPt(urgentes.slice(0, 3).map(nome)) + (urgentes.length > 1 ? ' precisam' : ' precisa') + ' começar nesta rodada para caber no prazo.');
     }
     if (!avisos.length) {
       encerrar();
@@ -333,7 +414,7 @@
       case 'jogar':
       case 'nova-partida':
       case 'outra-missao':
-        irPara('missoes');
+        irPara('preparar');
         break;
       case 'continuar':
         if (app.estado) irPara(app.estado.fase === 'fim' ? 'fim' : 'jogo');
@@ -357,11 +438,20 @@
         app.ui.resumoFechado = app.estado ? app.estado.rodada : null;
         render();
         break;
+      case 'escolher-duracao': {
+        const n = Number(el && el.value);
+        if (OG.regrasUtil.duracao(n)) {
+          app.config.duracao = n;
+          salvarConfig();
+          render();
+        }
+        break;
+      }
       case 'escolher-missao':
         escolherMissao(d.missao);
         break;
       case 'jogar-de-novo':
-        if (app.estado) novaPartida(app.estado.missaoId);
+        if (app.estado) novaPartida(app.estado.config.missaoId, app.estado.config.duracao, app.estado.config.caixaApertado);
         break;
       case 'confirmar-evento':
         despachar({ tipo: 'CONFIRMAR_EVENTO', escolha: d.escolha }, avisoDelta);
@@ -369,8 +459,23 @@
       case 'ver-evento':
         abrirModal({ tipo: 'ver-evento' });
         break;
-      case 'planejar':
-        despachar({ tipo: 'PLANEJAR', cartaId: d.carta }, function () { app.ui.modal = null; app.ui.focoDepois = d.carta; });
+      case 'abrir-agenda':
+        abrirModal({ tipo: 'agenda' });
+        break;
+      case 'abrir-planejar':
+        abrirResponsavel(d.carta, 'planejar');
+        break;
+      case 'abrir-trocar':
+        abrirResponsavel(d.carta, 'trocar');
+        break;
+      case 'escolher-responsavel':
+        if (app.ui.modal && app.ui.modal.tipo === 'responsavel') {
+          app.ui.modal.escolhido = d.pessoa;
+          render();
+        }
+        break;
+      case 'confirmar-responsavel':
+        confirmarResponsavel(d.seguir);
         break;
       case 'desplanejar':
         despachar({ tipo: 'DESPLANEJAR', cartaId: d.carta }, function () { app.ui.modal = null; app.ui.focoDepois = d.carta; });
@@ -383,6 +488,9 @@
         break;
       case 'alternar-pessoa':
         alternarPessoa(d.pessoa, el.checked);
+        break;
+      case 'sugerir-equipe':
+        sugerirEquipe();
         break;
       case 'confirmar-equipe':
         confirmarEquipe();
@@ -420,7 +528,10 @@
         despachar({ tipo: 'CANCELAR_ENCERRAMENTO' });
         break;
       case 'avancar':
-        despachar({ tipo: 'AVANCAR' }, function () { app.ui.resumoFechado = null; });
+        despachar({ tipo: 'AVANCAR' }, function () {
+          app.ui.resumoFechado = null;
+          app.ui.modal = null; // nenhuma janela da rodada anterior reaparece depois do evento
+        });
         break;
       case 'aba':
         app.ui.aba = d.aba;
@@ -528,11 +639,13 @@
       case 'como-jogar': return T.modalComoJogar(app);
       case 'config': return T.modalConfig(app);
       case 'confirmar': return T.modalConfirmar(app);
+      case 'responsavel': return T.modalResponsavel(app);
       case 'equipe':
       case 'completar': return T.modalEquipe(app);
       case 'revisor': return T.modalRevisor(app);
       case 'detalhe': return T.modalDetalhe(app);
       case 'ver-evento': return T.modalVerEvento(app);
+      case 'agenda': return T.modalAgenda(app);
       default: return null;
     }
   }
@@ -544,7 +657,10 @@
       const fase = app.estado.fase;
       if (fase === 'evento') return OG.telas.modalEvento(app);
       if (fase === 'decisao') return OG.telas.modalDecisao(app);
-      if (fase === 'resumo') return app.ui.resumoFechado === app.estado.rodada ? null : OG.telas.modalResumo(app);
+      if (fase === 'resumo') {
+        if (m && (m.tipo === 'detalhe' || m.tipo === 'agenda' || m.tipo === 'ver-evento')) return construirModal(m.tipo);
+        return app.ui.resumoFechado === app.estado.rodada ? null : OG.telas.modalResumo(app);
+      }
       if (fase === 'planejamento' && m) {
         const d = construirModal(m.tipo);
         if (!d) app.ui.modal = null;
@@ -568,8 +684,11 @@
     const r = {};
     const lateral = document.querySelector('.lateral');
     const quadro = document.querySelector('.quadro');
+    const coord = document.querySelector('.coordenacao-lista');
     if (lateral) r.lateral = lateral.scrollTop;
     if (quadro) r.quadro = quadro.scrollLeft;
+    if (coord) r.coord = coord.scrollLeft;
+    r.abertos = Array.prototype.map.call(document.querySelectorAll('details[open][data-chave]'), function (x) { return x.dataset.chave; });
     r.janela = global.scrollY;
     return r;
   }
@@ -577,8 +696,10 @@
   function restaurarRolagens(r) {
     const lateral = document.querySelector('.lateral');
     const quadro = document.querySelector('.quadro');
+    const coord = document.querySelector('.coordenacao-lista');
     if (lateral && r.lateral) lateral.scrollTop = r.lateral;
     if (quadro && r.quadro) quadro.scrollLeft = r.quadro;
+    if (coord && r.coord) coord.scrollLeft = r.coord;
     if (Math.abs(global.scrollY - r.janela) > 2) global.scrollTo(0, r.janela);
   }
 
@@ -592,9 +713,9 @@
 
   function tituloDaPagina() {
     const base = 'Operação Grêmio — Mesquita';
-    if (app.tela === 'jogo' && app.estado) return 'Rodada ' + app.estado.rodada + ' — ' + base;
+    if (app.tela === 'jogo' && app.estado) return 'Rodada ' + app.estado.rodada + ' de ' + app.estado.config.duracao + ' — ' + base;
     if (app.tela === 'fim') return 'Resultado — ' + base;
-    if (app.tela === 'missoes') return 'Missões — ' + base;
+    if (app.tela === 'preparar') return 'Nova partida — ' + base;
     return base;
   }
 
@@ -607,12 +728,16 @@
     if (app.tela === 'jogo' && !app.estado) app.tela = 'inicio';
     if (app.tela === 'fim' && !app.estado) app.tela = 'inicio';
     switch (app.tela) {
-      case 'missoes': html = OG.telas.telaMissoes(app); break;
+      case 'preparar': html = OG.telas.telaPreparar(app); break;
       case 'jogo': html = OG.telas.telaJogo(app); break;
       case 'fim': html = OG.telas.telaFim(app); break;
       default: html = OG.telas.telaInicio(app);
     }
     raiz.innerHTML = html;
+    rolagens.abertos.forEach(function (chave) {
+      const el = raiz.querySelector('details[data-chave="' + chave + '"]');
+      if (el) el.open = true;
+    });
     restaurarRolagens(rolagens);
     aplicarPulsos();
     renderModal(foco);
@@ -628,7 +753,7 @@
   /** Depois que um card muda de coluna, o foco do teclado acompanha o card. */
   function focarCard(cartaId) {
     const raiz = document.getElementById('app');
-    const chaves = ['abrir-iniciar:', 'abrir-revisar:', 'abrir-completar:', 'mutirao:', 'detalhes:'];
+    const chaves = ['abrir-iniciar:', 'abrir-revisar:', 'abrir-completar:', 'mutirao:', 'abrir-planejar:', 'detalhes:'];
     for (let i = 0; i < chaves.length; i++) {
       if (OG.ui.restaurarFoco(raiz, chaves[i] + cartaId)) {
         const el = document.activeElement;
@@ -710,7 +835,7 @@
     const id = card.dataset.carta;
     const c = E().carta(app.estado, id);
     if (!c) return;
-    arrasto = { id: id, avaliacoes: {} };
+    arrasto = { id: id };
     evento.dataTransfer.effectAllowed = 'move';
     try { evento.dataTransfer.setData('text/plain', id); } catch (erro) { /* navegador antigo */ }
     card.classList.add('sendo-arrastado');
@@ -723,7 +848,6 @@
         return;
       }
       const av = OG.kanban.avaliarMovimento(app.estado, id, destino);
-      arrasto.avaliacoes[destino] = av;
       col.classList.add(av.ok ? 'alvo-valido' : 'alvo-invalido');
       if (!av.ok) col.setAttribute('title', av.motivo);
       const dica = col.querySelector('[data-dica-soltar]');
@@ -757,7 +881,7 @@
       OG.ui.aviso(av.motivo, 'erro');
       return;
     }
-    if (av.acao === 'planejar') despachar({ tipo: 'PLANEJAR', cartaId: id });
+    if (av.acao === 'planejar') abrirResponsavel(id, 'planejar');
     else if (av.acao === 'desplanejar') despachar({ tipo: 'DESPLANEJAR', cartaId: id });
     else if (av.acao === 'iniciar') abrirEquipe(id, 'equipe');
     else if (av.acao === 'revisar') abrirRevisor(id);
@@ -773,6 +897,8 @@
     render();
     if (r.problema === 'corrompido') {
       OG.ui.aviso('A partida salva estava danificada e foi descartada. Comece uma nova.', 'erro');
+    } else if (r.problema === 'antigo') {
+      OG.ui.aviso('A partida salva era da versão anterior do jogo, com regras diferentes, e foi descartada. Comece uma nova.', 'info');
     }
     document.addEventListener('click', aoClicar);
     document.addEventListener('change', aoMudar);

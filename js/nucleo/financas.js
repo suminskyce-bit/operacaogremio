@@ -15,7 +15,12 @@
   'use strict';
   const OG = (global.OG = global.OG || {});
 
-  function lancar(estado, recurso, valor, tipo, descricao) {
+  /**
+   * Registra um lançamento no livro-caixa. `ref` (opcional) amarra o lançamento a um
+   * card ({ cartaId }) ou a uma missão ({ missaoId }): é o que permite à validação provar
+   * que cada custo foi cobrado e cada retorno foi pago uma única vez POR CARD.
+   */
+  function lancar(estado, recurso, valor, tipo, descricao, ref) {
     if (!valor) return 0;
     const atual = OG.estado.recursos(estado)[recurso];
     let aplicado = valor;
@@ -27,13 +32,16 @@
       aplicado = -atual;
     }
     if (aplicado === 0) return 0;
-    estado.livro.push({
+    const lancamento = {
       rodada: estado.rodada,
       recurso: recurso,
       valor: aplicado,
       tipo: tipo,
       descricao: descricao,
-    });
+    };
+    if (ref && ref.cartaId) lancamento.cartaId = ref.cartaId;
+    if (ref && ref.missaoId) lancamento.missaoId = ref.missaoId;
+    estado.livro.push(lancamento);
     return aplicado;
   }
 

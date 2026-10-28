@@ -1,54 +1,46 @@
 /*
  * motor.js — ponto único de entrada das regras.
  *
- *   const estado = OG.motor.criarPartida('farroupilha', semente);
- *   const r = OG.motor.aplicar(estado, { tipo: 'PLANEJAR', cartaId: 'mateada' });
+ *   const estado = OG.motor.criarPartida({ missaoId: 'farroupilha', duracao: 8, semente: 42 });
+ *   const r = OG.motor.aplicar(estado, { tipo: 'PLANEJAR', cartaId: 'c1', responsavel: 'antune' });
  *   if (r.ok) estado = r.estado; else mostrar(r.erro);
  *
  * `aplicar` nunca altera o estado recebido: trabalha numa cópia e só devolve a cópia
  * se a ação inteira deu certo. Ação inválida = estado intacto + mensagem explicando.
+ * `aplicarNoLugar` altera o próprio estado (uso interno do planejador, que valida antes).
  */
 (function (global) {
   'use strict';
   const OG = (global.OG = global.OG || {});
 
   /**
-   * opcoes.caixaApertado: true começa com regras.CAIXA_APERTADO em vez de CAIXA_INICIAL.
+   * config: { missaoId, duracao (4, 8, 10 ou 26), semente, caixaApertado }
+   * opcoes.eventosNeutros: true troca o baralho por "semanas tranquilas" (só para a meta).
    */
-  function criarPartida(missaoId, semente, opcoes) {
-    const missao = OG.dados.missoesPorId[missaoId];
-    if (!missao) throw new Error('Missão desconhecida: ' + missaoId);
+  function criarPartida(config, opcoes) {
     const R = OG.regras;
-    const s = (Number(semente) >>> 0) || 1;
-    const apertado = !!(opcoes && opcoes.caixaApertado);
+    const cfg = config || {};
+    const missao = OG.dados.missoesPorId[cfg.missaoId];
+    if (!missao) throw new Error('Missão desconhecida: ' + cfg.missaoId);
+    const duracao = cfg.duracao === undefined ? R.DURACAO_PADRAO : cfg.duracao;
+    if (!OG.regrasUtil.duracao(duracao)) throw new Error('Duração inválida: ' + duracao);
+    const semente = (Number(cfg.semente) >>> 0) || 1;
+    const apertado = !!cfg.caixaApertado;
     const caixaInicial = apertado ? R.CAIXA_APERTADO : R.CAIXA_INICIAL;
+    const configFinal = { missaoId: cfg.missaoId, duracao: duracao, semente: semente, caixaApertado: apertado };
+    const agenda = OG.agenda.montarAgenda(configFinal);
 
     const estado = {
       versao: R.VERSAO_ESTADO,
-      semente: s,
-      rng: s,
-      caixaApertado: apertado,
-      missaoId: missaoId,
+      config: configFinal,
+      rng: semente,
       rodada: 1,
       fase: 'evento',
-      cartas: missao.projetos.map(function (projetoId, i) {
-        return {
-          id: projetoId,
-          projetoId: projetoId,
-          coluna: 'backlog',
-          ordem: i,
-          progresso: 0,
-          equipe: [],
-          equipeFinal: [],
-          custoPago: null,
-          custoItens: [],
-          recompensado: false,
-          iniciadoNaRodada: null,
-          concluidoNaRodada: null,
-          revisor: null,
-        };
-      }),
-      proximaOrdem: missao.projetos.length,
+      agenda: agenda,
+      programacao: OG.agenda.montarProgramacao(configFinal, agenda),
+      cartas: [],
+      arquivo: [],
+      proximaOrdem: 0,
       baralho: [],
       eventoAtual: null,
       cartasMovidasNaRodada: [],
@@ -57,7 +49,6 @@
       temporarios: [],
       descontosPendentes: [],
       mutirao: null,
-      missaoCumprida: false,
       pendente: null,
       resumo: null,
       livro: [
@@ -66,11 +57,19 @@
         { rodada: 1, recurso: 'tradicao', valor: R.TRADICAO_INICIAL, tipo: 'inicial', descricao: 'Tradição inicial' },
       ],
       historico: [
-        { rodada: 1, tipo: 'sistema', texto: 'Partida iniciada: ' + missao.nome + '. Objetivo: concluir ' + missao.objetivo + ' projetos.' },
+        {
+          rodada: 1, tipo: 'sistema',
+          texto: 'Partida iniciada: ' + duracao + ' rodadas, abrindo com ' + missao.nome + '.',
+        },
       ],
     };
 
-    estado.baralho = OG.eventos.montarBaralho(estado);
+    if (opcoes && opcoes.eventosNeutros) {
+      estado.baralho = new Array(duracao).fill(OG.dados.eventoNeutro.id);
+    } else {
+      estado.baralho = OG.eventos.montarBaralho(estado);
+    }
+    OG.agenda.receberChegadas(estado);
     OG.eventos.revelarEvento(estado);
     return estado;
   }
@@ -78,7 +77,8 @@
   function executar(estado, acao) {
     switch (acao.tipo) {
       case 'CONFIRMAR_EVENTO': return OG.eventos.confirmarEvento(estado, acao.escolha);
-      case 'PLANEJAR': return OG.kanban.planejar(estado, acao.cartaId);
+      case 'PLANEJAR': return OG.kanban.planejar(estado, acao.cartaId, acao.responsavel);
+      case 'TROCAR_RESPONSAVEL': return OG.kanban.trocarResponsavel(estado, acao.cartaId, acao.responsavel);
       case 'DESPLANEJAR': return OG.kanban.desplanejar(estado, acao.cartaId);
       case 'INICIAR': return OG.kanban.iniciar(estado, acao.cartaId, acao.equipe);
       case 'REVISAR': return OG.kanban.revisar(estado, acao.cartaId, acao.revisorId);
@@ -110,8 +110,15 @@
     }
   }
 
+  /** Aplica a ação no próprio estado. Lança ErroDeRegra se for inválida (o estado pode ficar pela metade). */
+  function aplicarNoLugar(estado, acao) {
+    executar(estado, acao);
+    return estado;
+  }
+
   OG.motor = {
     criarPartida,
     aplicar,
+    aplicarNoLugar,
   };
 })(globalThis);

@@ -25,41 +25,44 @@
   // ---------------- Baralho ----------------
 
   // Eventos que travam a rodada inteira. Na rodada 1 eles seriam só punição (ainda não
-  // há nada para terminar) e dois deles na mesma partida tornavam a missão quase impossível.
+  // há nada para terminar) e dois no mesmo bloco de 4 rodadas tornavam a missão quase impossível.
   const SEVEROS = ['ev_chimarrao', 'ev_provas'];
+  const BLOCO = 4;
 
   /**
-   * Monta os 4 eventos da partida (um por rodada), sem repetição. Regras de composição:
-   *  - pelo menos 1 evento positivo (a partida não vira só punição);
-   *  - no máximo 1 evento severo (Chimarrão ou Provas), e nunca na rodada 1.
+   * Monta um evento para cada rodada da partida. Regras de composição:
+   *  - os 20 eventos aparecem antes de qualquer repetição (partidas longas reembaralham);
+   *  - nunca o mesmo evento em duas rodadas seguidas;
+   *  - em cada bloco de 4 rodadas: pelo menos 1 evento positivo e no máximo 1 severo
+   *    (Chimarrão ou Provas);
+   *  - nunca evento severo na rodada 1.
    */
   function montarBaralho(estado) {
-    const ids = OG.dados.eventos.map(function (ev) { return ev.id; });
-    const embaralhados = OG.util.embaralhar(estado, ids);
-    const n = OG.regras.EVENTOS_POR_PARTIDA;
+    const n = estado.config.duracao;
+    const todos = OG.dados.eventos.map(function (ev) { return ev.id; });
     const tipo = function (id) { return OG.dados.eventosPorId[id].tipo; };
-
+    let pilha = OG.util.embaralhar(estado, todos);
     const mao = [];
-    let severos = 0;
-    for (let i = 0; i < embaralhados.length && mao.length < n; i++) {
-      const id = embaralhados[i];
-      if (SEVEROS.indexOf(id) !== -1) {
-        if (severos >= 1) continue;
-        severos++;
+
+    for (let i = 0; i < n; i++) {
+      const inicioBloco = Math.floor(i / BLOCO) * BLOCO;
+      const ultimoDoBloco = Math.min(inicioBloco + BLOCO, n) - 1;
+      const bloco = mao.slice(inicioBloco, i);
+      const severosNoBloco = bloco.filter(function (id) { return SEVEROS.indexOf(id) !== -1; }).length;
+      const precisaPositivo = i === ultimoDoBloco && !bloco.some(function (id) { return tipo(id) === 'positivo'; });
+      const serve = function (id) {
+        if (i > 0 && mao[i - 1] === id) return false;
+        if (SEVEROS.indexOf(id) !== -1 && (i === 0 || severosNoBloco >= 1)) return false;
+        if (precisaPositivo && tipo(id) !== 'positivo') return false;
+        return true;
+      };
+      let indice = pilha.findIndex(serve);
+      if (indice === -1) {
+        pilha = pilha.concat(OG.util.embaralhar(estado, todos));
+        indice = pilha.findIndex(serve);
       }
-      mao.push(id);
-    }
-
-    if (!mao.some(function (id) { return tipo(id) === 'positivo'; })) {
-      const positivo = embaralhados.find(function (id) { return tipo(id) === 'positivo' && mao.indexOf(id) === -1; });
-      mao[OG.util.inteiroAleatorio(estado, n)] = positivo;
-    }
-
-    if (SEVEROS.indexOf(mao[0]) !== -1) {
-      const j = 1 + OG.util.inteiroAleatorio(estado, n - 1);
-      const tmp = mao[0];
-      mao[0] = mao[j];
-      mao[j] = tmp;
+      mao.push(pilha.splice(indice, 1)[0]);
+      if (!pilha.length) pilha = OG.util.embaralhar(estado, todos);
     }
     return mao;
   }
@@ -111,7 +114,7 @@
         const pode = F().caixa(estado) >= valor;
         return [
           { id: 'pagar', rotulo: 'Pagar ' + fmt(valor), habilitado: pode, motivo: pode ? null : 'Caixa insuficiente.' },
-          { id: 'recusar', rotulo: 'Recusar (−5 Prestígio)', habilitado: true },
+          { id: 'recusar', rotulo: 'Recusar (−' + def.perdaSeRecusar.prestigio + ' Prestígio)', habilitado: true },
         ];
       }
       case 'ev_reuniao':
@@ -155,7 +158,7 @@
           F().pagarDespesaOpcional(estado, 'impressoes');
           historico(estado, 'dinheiro', 'Despesa — Impressões de Última Hora: pago ' + fmt(OG.dados.despesas.impressoes.valor) + '.');
         } else {
-          const perdeu = -F().lancar(estado, 'prestigio', -5, 'penalidade', 'Recusou: Impressões de Última Hora');
+          const perdeu = -F().lancar(estado, 'prestigio', -def.perdaSeRecusar.prestigio, 'penalidade', 'Recusou: Impressões de Última Hora');
           historico(estado, 'evento', 'Impressões de Última Hora recusadas: −' + perdeu + ' Prestígio.');
         }
         break;
@@ -170,28 +173,32 @@
         break;
       }
       case 'ev_post': {
-        const perdeu = -F().lancar(estado, 'prestigio', -5, 'penalidade', 'Divulgação Deu Ruim');
+        const perdeu = -F().lancar(estado, 'prestigio', -def.perda.prestigio, 'penalidade', 'Divulgação Deu Ruim');
         historico(estado, 'evento', 'Divulgação deu ruim: −' + perdeu + ' Prestígio.');
         break;
       }
       case 'ev_patrocinio':
-        F().lancar(estado, 'dinheiro', 150, 'receita', 'Patrocínio da Concolores');
-        historico(estado, 'dinheiro', 'Patrocínio da Concolores: +' + fmt(150) + '.');
+        F().lancar(estado, 'dinheiro', def.ganho.dinheiro, 'receita', 'Patrocínio da Concolores');
+        historico(estado, 'dinheiro', 'Patrocínio da Concolores: +' + fmt(def.ganho.dinheiro) + '.');
         break;
       case 'ev_viral':
-        F().lancar(estado, 'prestigio', 10, 'bonus', 'Divulgação Viral');
-        historico(estado, 'evento', 'Divulgação viral: +10 Prestígio.');
+        F().lancar(estado, 'prestigio', def.ganho.prestigio, 'bonus', 'Divulgação Viral');
+        historico(estado, 'evento', 'Divulgação viral: +' + def.ganho.prestigio + ' Prestígio.');
         break;
       case 'ev_professor':
-        F().lancar(estado, 'dinheiro', 50, 'receita', 'Professor Resolveu Ajudar');
-        F().lancar(estado, 'prestigio', 5, 'bonus', 'Professor Resolveu Ajudar');
-        historico(estado, 'dinheiro', 'Professor resolveu ajudar: +' + fmt(50) + ' e +5 Prestígio.');
+        F().lancar(estado, 'dinheiro', def.ganho.dinheiro, 'receita', 'Professor Resolveu Ajudar');
+        F().lancar(estado, 'prestigio', def.ganho.prestigio, 'bonus', 'Professor Resolveu Ajudar');
+        historico(estado, 'dinheiro', 'Professor resolveu ajudar: +' + fmt(def.ganho.dinheiro) + ' e +' + def.ganho.prestigio + ' Prestígio.');
         break;
-      case 'ev_patricio':
-        estado.temporarios.push({ pessoaId: 'patricio', ateRodada: estado.rodada + R.DURACAO_TEMPORARIO - 1 });
+      case 'ev_patricio': {
+        // Se ele já estava (evento repetido numa partida longa), a estadia é renovada.
+        const ate = estado.rodada + R.DURACAO_TEMPORARIO - 1;
+        estado.temporarios = estado.temporarios.filter(function (t) { return t.pessoaId !== 'patricio'; });
+        estado.temporarios.push({ pessoaId: 'patricio', ateRodada: ate });
         historico(estado, 'evento', 'Patrício chegou como temporário e fica até o fim da rodada ' +
-          Math.min(estado.rodada + R.DURACAO_TEMPORARIO - 1, R.TOTAL_RODADAS) + '.');
+          Math.min(ate, E().totalRodadas(estado)) + '.');
         break;
+      }
       case 'ev_sindicato':
       case 'ev_material': {
         const origem = ev.id === 'ev_sindicato' ? 'Doação do Sindicato' : 'Material Encontrado';
@@ -335,8 +342,11 @@
       c.coluna = 'afazer';
       c.ordem = estado.proximaOrdem++;
       c.progresso = 0;
+      c.tempoTotal = null;
+      c.iniciadoNaRodada = null;
       c.equipe = [];
-      mensagens.push(def.nome + ': ' + proj.nome + ' voltou para A FAZER (o custo já pago continua valendo).');
+      mensagens.push(def.nome + ': ' + proj.nome + ' voltou para A FAZER com ' + E().pessoa(c.responsavel).nome +
+        ' (o custo já pago continua valendo).');
       historico(estado, 'evento', def.nome + ': ' + proj.nome + ' voltou para A FAZER.');
     }
 

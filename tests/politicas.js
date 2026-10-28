@@ -1,360 +1,300 @@
 /*
- * Jogadores automáticos usados na simulação de balanceamento e nos testes.
- * Eles só usam a API pública do motor (OG.motor.aplicar), como a interface.
+ * Jogadores automáticos usados nos testes e na simulação de balanceamento.
+ * Todos usam só a API pública do motor (OG.motor.aplicar), como a interface, e só
+ * mandam ações válidas (uma ação recusada derruba a partida simulada com erro).
  *
- *  - bom:        planeja a missão, usa especialistas, paga quando compensa
- *  - parado:     não move nenhum card (linha de base)
- *  - aleatorio:  ações aleatórias, válidas ou não (fuzzing)
- *  - gastador:   prioriza projetos caros/longos e sempre paga
- *  - economico:  prioriza projetos baratos e evita pagar despesas opcionais
- *  - prestigio:  prioriza ganho de prestígio
- *  - descuidado: esquece revisões e inicia projetos até na última rodada
+ *  - planejador:     o "Grêmio bem organizado" do próprio jogo (o mesmo que calcula a
+ *                    meta), mas jogando COM os imprevistos do baralho
+ *  - semPensar:      faz o fluxo direito (revisa, começa o que dá), mas escolhe
+ *                    coordenador, equipe e card ao acaso
+ *  - coordAoAcaso:   equipe enxuta com especialistas, coordenador ao acaso
+ *  - equipeAoAcaso:  coordenador recomendado, equipe ao acaso (válida)
+ *  - semPrioridade:  coordenador recomendado e equipe enxuta, cards por ordem de chegada
+ *  - gastador:       começa pelos projetos mais caros e sempre paga as despesas opcionais
+ *  - economico:      começa pelos mais baratos e nunca paga despesa opcional
+ *  - descuidado:     esquece de revisar nas rodadas pares e começa o que já não cabe no prazo
+ *  - parado:         não move nenhum card (linha de base)
  */
 'use strict';
 
+function criarRng(semente) {
+  let a = semente >>> 0;
+  return function () {
+    a = (a + 0x6d2b79f5) >>> 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
 function criarPoliticas(OG) {
   const E = OG.estado;
-  const R = OG.regras;
 
-  function valorCarta(c, foco) {
-    const p = E.projetoDaCarta(c);
-    const dinheiro = (p.retorno - p.custo) / R.REAIS_POR_PONTO;
-    if (foco === 'prestigio') return p.prestigio * 3 + p.tradicao + dinheiro * 0.5 + R.PONTOS_POR_PROJETO;
-    return dinheiro + p.prestigio + p.tradicao + R.PONTOS_POR_PROJETO;
+  function escolher(lista, rnd) {
+    return lista[Math.floor(rnd() * lista.length)];
   }
 
-  function equipeSugerida(estado, c, preferirVoluntarios) {
-    const proj = E.projetoDaCarta(c);
-    const cand = OG.kanban.candidatos(estado, c);
-    const pontua = function (p) {
-      let s = 0;
-      if (E.ehEspecialista(p, proj)) s += 10;
-      if (preferirVoluntarios && p.papel === 'coordenador') s -= 3;
-      if (p.somentePorEvento) s += 1; // usa o temporário enquanto ele está aqui
-      return s;
-    };
-    return cand
-      .slice()
-      .sort(function (a, b) { return pontua(b) - pontua(a); })
-      .slice(0, proj.trabalhadores)
-      .map(function (p) { return p.id; });
+  function embaralhar(lista, rnd) {
+    const l = lista.slice();
+    for (let i = l.length - 1; i > 0; i--) {
+      const j = Math.floor(rnd() * (i + 1));
+      const t = l[i];
+      l[i] = l[j];
+      l[j] = t;
+    }
+    return l;
   }
 
-  function revisorSugerido(estado) {
-    const livres = E.coordenadoresLivres(estado);
-    if (!livres.length) return null;
-    // Prefere quem não é especialista dos cards que ainda vão começar.
-    const futuros = estado.cartas.filter(function (c) { return c.coluna === 'backlog' || c.coluna === 'afazer'; });
-    const utilidade = function (p) {
-      return futuros.filter(function (c) { return E.ehEspecialista(p, E.projetoDaCarta(c)); }).length;
-    };
-    return livres.slice().sort(function (a, b) { return utilidade(a) - utilidade(b); })[0].id;
-  }
-
-  function podeIniciarAgora(estado, c) {
+  function regra(fn) {
     try {
-      OG.kanban.validarPreInicio(estado, c);
+      fn();
       return true;
     } catch (erro) {
-      return false;
+      if (erro instanceof OG.estado.ErroDeRegra) return false;
+      throw erro;
     }
   }
 
-  function podePlanejarAgora(estado, c) {
-    return OG.kanban.avaliarMovimento(estado, c.id, 'afazer').ok;
-  }
-
-  /** Capacidade (vagas-rodada) que ainda resultam em conclusão, a partir desta rodada. */
-  function capacidadeRestante(estado) {
-    let total = 0;
-    for (let r = estado.rodada; r <= R.TOTAL_RODADAS - 1; r++) {
-      let ocupadas = 0;
-      E.cartasNaColuna(estado, 'andamento').forEach(function (c) {
-        const p = E.projetoDaCarta(c);
-        const restante = p.tempo - c.progresso;
-        if (r < estado.rodada + restante) ocupadas++;
-      });
-      let vagas = R.LIMITE_EM_ANDAMENTO - ocupadas;
-      if (r === estado.rodada) {
-        if (E.eventoAtivo(estado, 'ev_chimarrao')) {
-          vagas = Math.min(vagas, OG.kanban.iniciadosNaRodada(estado).length ? 0 : 1);
-        }
-        if (E.eventoAtivo(estado, 'ev_provas')) {
-          // Só um card se move na rodada, mas ele pode ir do BACKLOG até EM ANDAMENTO.
-          const movidas = estado.cartasMovidasNaRodada;
-          const aindaPodeIniciar = movidas.length === 0 ||
-            (movidas.length === 1 && E.carta(estado, movidas[0]).coluna === 'afazer');
-          vagas = Math.min(vagas, aindaPodeIniciar ? 1 : 0);
-        }
-      }
-      total += Math.max(0, vagas);
-    }
-    return total;
-  }
-
-  /**
-   * Escolhe quais cards ainda vale a pena começar (planejamento ótimo por força bruta,
-   * são no máximo 6 cards). Retorna os ids na ordem de prioridade de início.
-   */
-  function planoIdeal(estado, foco) {
-    const m = E.missao(estado);
-    const disponiveis = estado.cartas.filter(function (c) {
-      return (c.coluna === 'backlog' || c.coluna === 'afazer') && E.terminaATempo(estado, c);
+  /** Equipe válida (força suficiente e ninguém sobrando) escolhida ao acaso, ou null. */
+  function equipeAoAcaso(estado, c, rnd) {
+    const proj = E.projetoDaCarta(c);
+    const precisa = E.forcaNecessaria(proj);
+    const equipe = [];
+    embaralhar(OG.kanban.candidatos(estado, c), rnd).forEach(function (p) {
+      if (E.forcaDaEquipe(proj, true, equipe) < precisa) equipe.push(p.id);
     });
-    const garantidos = E.totalConcluidos(estado) +
-      E.cartasNaColuna(estado, 'revisao').length +
-      E.cartasNaColuna(estado, 'andamento').filter(function (c) { return E.terminaATempo(estado, c); }).length;
-    const capacidade = capacidadeRestante(estado);
-    const bonusMissao = estado.missaoCumprida ? 0 :
-      m.recompensa.dinheiro / R.REAIS_POR_PONTO + m.recompensa.prestigio + m.recompensa.tradicao;
-
-    let melhor = { valor: -Infinity, cartas: [] };
-    const n = disponiveis.length;
-    for (let mask = 0; mask < (1 << n); mask++) {
-      const escolhidos = [];
-      let usado = 0;
-      let valor = 0;
-      for (let i = 0; i < n; i++) {
-        if (mask & (1 << i)) {
-          const c = disponiveis[i];
-          escolhidos.push(c);
-          usado += E.projetoDaCarta(c).tempo - c.progresso;
-          valor += valorCarta(c, foco);
-        }
-      }
-      if (usado > capacidade) continue;
-      // Projetos de 2 rodadas só cabem se começarem até a penúltima rodada útil.
-      if (!estado.missaoCumprida && garantidos + escolhidos.length >= m.objetivo) valor += bonusMissao;
-      // Desempate: menos projetos longos (menos risco de evento).
-      valor -= escolhidos.filter(function (c) { return E.projetoDaCarta(c).tempo > 1; }).length * 0.5;
-      if (valor > melhor.valor) melhor = { valor: valor, cartas: escolhidos };
+    if (E.forcaDaEquipe(proj, true, equipe) < precisa) return null;
+    let sobrando = E.voluntariosSobrando(proj, equipe);
+    while (sobrando.length) {
+      equipe.splice(equipe.indexOf(escolher(sobrando, rnd)), 1);
+      sobrando = E.voluntariosSobrando(proj, equipe);
     }
-    return melhor.cartas
-      .slice()
-      .sort(function (a, b) {
-        const ta = E.projetoDaCarta(a).tempo - a.progresso;
-        const tb = E.projetoDaCarta(b).tempo - b.progresso;
-        if (ta !== tb) return tb - ta; // longos primeiro (precisam de tempo)
-        return valorCarta(b, foco) - valorCarta(a, foco);
-      })
-      .map(function (c) { return c.id; });
+    return equipe;
   }
 
-  function arriscadoNestaRodada(estado, c) {
-    const p = E.projetoDaCarta(c);
-    const ev = estado.eventoAtual && estado.eventoAtual.id;
-    const def = ev && E.definicaoEvento(ev);
-    if (!def || !def.risco || def.quando !== 'fim') return false;
-    return p.riscos.indexOf(def.risco) !== -1;
+  function montarEquipe(estado, c, opts, rnd) {
+    if (opts.equipe === 'acaso') return equipeAoAcaso(estado, c, rnd);
+    const t = OG.planejador.montarEquipe(estado, c);
+    return t ? t.equipe : null;
   }
 
-  function decisaoEvento(estado, opts) {
-    const opcoes = OG.eventos.opcoesEvento(estado).filter(function (o) { return o.habilitado; });
-    let escolha = opcoes[0].id;
-    if (estado.eventoAtual.id === 'ev_impressoes') {
-      const caixa = OG.financas.caixa(estado);
-      const pagar = opcoes.find(function (o) { return o.id === 'pagar'; });
-      if (opts.sempreRecusa || !pagar) escolha = 'recusar';
-      else if (opts.sempreLeva) escolha = 'pagar';
-      else escolha = caixa - 40 >= 120 ? 'pagar' : 'recusar';
-    }
-    return { tipo: 'CONFIRMAR_EVENTO', escolha: escolha, rodada: estado.rodada };
+  // ---------------- Eventos ----------------
+
+  function decidirEvento(estado, opts) {
+    if (opts.pagar === 'planejador') return OG.planejador.decidir(estado);
+    const habilitadas = OG.eventos.opcoesEvento(estado).filter(function (o) { return o.habilitado; });
+    const preferida = opts.pagar === 'sempre' ? 'pagar' : 'recusar';
+    const op = habilitadas.find(function (o) { return o.id === preferida; }) || habilitadas[0];
+    return { tipo: 'CONFIRMAR_EVENTO', escolha: op.id, rodada: estado.rodada };
   }
 
-  function decisaoFim(estado, opts) {
-    const dec = OG.eventos.decisaoFimRodada(estado);
-    const habilitadas = dec.opcoes.filter(function (o) { return o.habilitado; });
+  function decidirFim(estado, opts, rnd) {
+    if (opts.pagar === 'planejador') return OG.planejador.decidir(estado);
+    const habilitadas = OG.eventos.decisaoFimRodada(estado).opcoes.filter(function (o) { return o.habilitado; });
     const pagar = habilitadas.find(function (o) { return o.id === 'pagar'; });
-    const ultima = estado.rodada >= R.TOTAL_RODADAS;
-    if (pagar && !ultima && !opts.sempreRecusa) {
-      // Pagar só se algum projeto afetado ainda termina a tempo.
-      const afetados = habilitadas.filter(function (o) { return o.id !== 'pagar'; });
-      const importa = afetados.some(function (o) {
-        const id = o.id.split(':')[1];
-        if (!id) return true;
-        const c = E.carta(estado, id);
-        return E.terminaATempo(estado, c);
-      });
-      if (importa || opts.sempreLeva) return { tipo: 'RESOLVER_DECISAO', escolha: 'pagar' };
-    }
-    // Escolhe o card cuja perda dói menos (que não termina a tempo ou vale menos).
-    const naoPagar = habilitadas.filter(function (o) { return o.id !== 'pagar'; });
-    const custoDaPerda = function (o) {
-      const id = o.id.split(':')[1];
-      if (!id) return 0;
-      const c = E.carta(estado, id);
-      const p = E.projetoDaCarta(c);
-      // Ficar parado atrasa 1 rodada: perde se deixaria de terminar a tempo.
-      const aindaTermina = estado.rodada + 1 + (p.tempo - c.progresso) <= R.TOTAL_RODADAS;
-      return aindaTermina ? 1 : valorCarta(c);
+    if (opts.pagar === 'sempre' && pagar) return { tipo: 'RESOLVER_DECISAO', escolha: 'pagar' };
+    const outras = habilitadas.filter(function (o) { return o.id !== 'pagar'; });
+    return { tipo: 'RESOLVER_DECISAO', escolha: (outras.length ? escolher(outras, rnd) : habilitadas[0]).id };
+  }
+
+  // ---------------- Planejamento ----------------
+
+  function planejamento(estado, opts, rnd) {
+    const ordenar = function (lista) {
+      if (opts.ordem === 'acaso') return embaralhar(lista, rnd);
+      if (opts.ordem) return lista.slice().sort(opts.ordem);
+      return lista; // ordem do quadro (chegada)
     };
-    naoPagar.sort(function (a, b) { return custoDaPerda(a) - custoDaPerda(b); });
-    return { tipo: 'RESOLVER_DECISAO', escolha: (naoPagar[0] || habilitadas[0]).id };
-  }
 
-  function planejamento(estado, opts) {
-    const rodada = estado.rodada;
-
-    // 1. Revisões (na Semana de Provas, só se não houver início melhor).
-    const provas = E.eventoAtivo(estado, 'ev_provas');
-    const revisaveis = E.cartasNaColuna(estado, 'revisao').filter(function (c) {
-      return OG.kanban.avaliarMovimento(estado, c.id, 'concluido').ok;
-    });
-    const esquecer = opts.esqueceRevisao && (rodada % 2 === 0);
-    if (revisaveis.length && !esquecer) {
-      const preferirInicio = provas && rodada < R.TOTAL_RODADAS && planoIdeal(estado, opts.foco).some(function (id) {
-        return podeIniciarAgora(estado, E.carta(estado, id)) || podePlanejarAgora(estado, E.carta(estado, id));
-      });
-      if (!preferirInicio) {
-        const revisor = revisorSugerido(estado);
-        if (revisor) return { tipo: 'REVISAR', cartaId: revisaveis[0].id, revisorId: revisor, rodada: rodada };
+    // 1. Revisões (prefere quem não tem projeto que ficaria parado: o aviso aparece na interface).
+    const esquece = opts.esqueceRevisao && estado.rodada % 2 === 0;
+    if (!esquece) {
+      const revisaveis = E.cartasNaColuna(estado, 'revisao');
+      for (let i = 0; i < revisaveis.length; i++) {
+        const c = revisaveis[i];
+        if (!regra(function () { OG.kanban.validarPreRevisao(estado, c); })) continue;
+        const possiveis = OG.kanban.revisoresPossiveis(estado, c);
+        const gratis = possiveis.filter(function (p) { return !E.projetoParadoSeRevisar(estado, p.id); });
+        const lista = gratis.length ? gratis : possiveis;
+        if (lista.length) return { tipo: 'REVISAR', cartaId: c.id, revisorId: escolher(lista, rnd).id, rodada: estado.rodada };
       }
     }
 
-    // 2. Mutirão: no card que mais ganha com +1 de progresso.
+    // 2. Mutirão no primeiro card que puder usar.
     if (OG.kanban.mutiraoDisponivel(estado)) {
-      const alvos = E.cartasNaColuna(estado, 'andamento').filter(function (c) { return !E.bloqueioDaCarta(estado, c); });
-      if (alvos.length) {
-        alvos.sort(function (a, b) {
-          const ra = E.projetoDaCarta(a).tempo - a.progresso;
-          const rb = E.projetoDaCarta(b).tempo - b.progresso;
-          return rb - ra || valorCarta(b) - valorCarta(a);
-        });
-        return { tipo: 'USAR_MUTIRAO', cartaId: alvos[0].id, rodada: rodada };
+      const alvo = E.cartasNaColuna(estado, 'andamento').find(function (c) { return !E.bloqueioDaCarta(estado, c); });
+      if (alvo) return { tipo: 'USAR_MUTIRAO', cartaId: alvo.id };
+    }
+
+    // 3. Completar equipe desfalcada.
+    const andamento = E.cartasNaColuna(estado, 'andamento');
+    for (let i = 0; i < andamento.length; i++) {
+      const c = andamento[i];
+      if (E.forcaDaCarta(c) >= E.forcaNecessaria(E.projetoDaCarta(c))) continue;
+      const cand = OG.kanban.candidatos(estado, c);
+      if (cand.length) return { tipo: 'COMPLETAR_EQUIPE', cartaId: c.id, pessoaId: escolher(cand, rnd).id };
+    }
+
+    // 4. Iniciar o que já está em A Fazer.
+    const afazer = ordenar(E.cartasNaColuna(estado, 'afazer'));
+    for (let i = 0; i < afazer.length; i++) {
+      const c = afazer[i];
+      if (!regra(function () { OG.kanban.validarPreInicio(estado, c); })) continue;
+      if (!opts.ignoraPrazo && !E.terminaNoPrazo(estado, c)) continue;
+      const equipe = montarEquipe(estado, c, opts, rnd);
+      if (!equipe) continue;
+      const acao = { tipo: 'INICIAR', cartaId: c.id, equipe: equipe };
+      if (OG.motor.aplicar(estado, acao).ok) return acao;
+    }
+
+    // 5. Planejar: Backlog -> A Fazer.
+    const livres = E.coordenadoresLivres(estado).filter(function (p) { return E.filaDe(estado, p.id).length === 0; });
+    if (livres.length) {
+      const backlog = ordenar(E.cartasNaColuna(estado, 'backlog').filter(function (c) {
+        return opts.ignoraPrazo || E.terminaNoPrazo(estado, c, 'sumindo');
+      }));
+      for (let i = 0; i < backlog.length; i++) {
+        const c = backlog[i];
+        let coordId;
+        if (opts.coord === 'recomendado') {
+          const rec = OG.planejador.avaliarCoordenadores(estado, c).find(function (x) { return x.recomendado; });
+          if (!rec) continue;
+          coordId = rec.coordId;
+        } else {
+          coordId = escolher(livres, rnd).id;
+        }
+        const acao = { tipo: 'PLANEJAR', cartaId: c.id, responsavel: coordId };
+        if (OG.motor.aplicar(estado, acao).ok) return acao;
       }
     }
 
-    // 3. Completar equipe incompleta.
-    const incompleta = E.cartasNaColuna(estado, 'andamento').find(function (c) {
-      return c.equipe.length < E.projetoDaCarta(c).trabalhadores;
-    });
-    if (incompleta) {
-      const cand = OG.kanban.candidatos(estado, incompleta);
-      if (cand.length) return { tipo: 'COMPLETAR_EQUIPE', cartaId: incompleta.id, pessoaId: cand[0].id, rodada: rodada };
-    }
-
-    // 4. Iniciar projetos.
-    if (E.cartasNaColuna(estado, 'andamento').length < R.LIMITE_EM_ANDAMENTO) {
-      // Semana de Provas: o card que já se moveu é o único que pode continuar.
-      if (provas && estado.cartasMovidasNaRodada.length === 1) {
-        const movida = E.carta(estado, estado.cartasMovidasNaRodada[0]);
-        if (movida.coluna === 'afazer' && podeIniciarAgora(estado, movida)) {
-          return { tipo: 'INICIAR', cartaId: movida.id, equipe: equipeSugerida(estado, movida, true), rodada: rodada };
-        }
-      }
-      let ordem;
-      if (opts.ordenar) {
-        ordem = estado.cartas
-          .filter(function (c) { return c.coluna === 'backlog' || c.coluna === 'afazer'; })
-          .filter(function (c) { return opts.ignoraPrazo || E.terminaATempo(estado, c); })
-          .sort(opts.ordenar)
-          .map(function (c) { return c.id; });
-      } else {
-        ordem = planoIdeal(estado, opts.foco);
-        // Evita expor ao risco de fim de rodada se houver alternativa.
-        const seguros = ordem.filter(function (id) { return !arriscadoNestaRodada(estado, E.carta(estado, id)); });
-        if (seguros.length) ordem = seguros.concat(ordem.filter(function (id) { return seguros.indexOf(id) === -1; }));
-      }
-      for (let i = 0; i < ordem.length; i++) {
-        const c = E.carta(estado, ordem[i]);
-        if (c.coluna === 'backlog') {
-          if (podePlanejarAgora(estado, c)) return { tipo: 'PLANEJAR', cartaId: c.id, rodada: rodada };
-          continue;
-        }
-        if (podeIniciarAgora(estado, c)) {
-          const equipe = equipeSugerida(estado, c, true);
-          const v = OG.motor.aplicar(estado, { tipo: 'INICIAR', cartaId: c.id, equipe: equipe });
-          if (v.ok) return { tipo: 'INICIAR', cartaId: c.id, equipe: equipe, rodada: rodada };
-        }
-      }
-    }
-
-    return { tipo: 'ENCERRAR_RODADA', rodada: rodada };
+    return { tipo: 'ENCERRAR_RODADA', rodada: estado.rodada };
   }
 
-  function politicaGuiada(nome, opts) {
-    opts = opts || {};
+  function guiada(nome, opts) {
+    const o = Object.assign({ coord: 'recomendado', equipe: 'enxuta', ordem: null, pagar: 'planejador' }, opts || {});
     return {
       nome: nome,
-      decidir: function (estado) {
-        switch (estado.fase) {
-          case 'evento': return decisaoEvento(estado, opts);
-          case 'decisao': return decisaoFim(estado, opts);
-          case 'resumo': return { tipo: 'AVANCAR' };
-          case 'planejamento': return planejamento(estado, opts);
-          default: return null;
-        }
+      criar: function (semente) {
+        const rnd = criarRng((semente || 1) * 2654435761);
+        return function (estado) {
+          switch (estado.fase) {
+            case 'evento': return decidirEvento(estado, o, rnd);
+            case 'decisao': return decidirFim(estado, o, rnd);
+            case 'resumo': return { tipo: 'AVANCAR' };
+            case 'planejamento': return planejamento(estado, o, rnd);
+            default: return null;
+          }
+        };
       },
     };
   }
 
-  const custo = function (c) { return E.projetoDaCarta(c).custo; };
+  const custo = function (a, b) { return E.projetoDaCarta(a).custo - E.projetoDaCarta(b).custo; };
 
   return {
-    bom: politicaGuiada('bom'),
-    prestigio: politicaGuiada('prestigio', { foco: 'prestigio' }),
-    gastador: politicaGuiada('gastador', {
-      sempreLeva: true,
-      ordenar: function (a, b) {
-        return (E.projetoDaCarta(b).tempo - E.projetoDaCarta(a).tempo) || (custo(b) - custo(a));
+    planejador: {
+      nome: 'planejador',
+      criar: function () {
+        return function (estado) { return OG.planejador.decidir(estado); };
       },
-    }),
-    economico: politicaGuiada('economico', {
-      sempreRecusa: true,
-      ordenar: function (a, b) { return custo(a) - custo(b); },
-    }),
-    descuidado: politicaGuiada('descuidado', {
-      esqueceRevisao: true,
-      ignoraPrazo: true,
-      ordenar: function (a, b) { return custo(b) - custo(a); },
-    }),
+    },
+    semPensar: guiada('semPensar', { coord: 'acaso', equipe: 'acaso', ordem: 'acaso' }),
+    coordAoAcaso: guiada('coordAoAcaso', { coord: 'acaso', ordem: 'acaso' }),
+    equipeAoAcaso: guiada('equipeAoAcaso', { equipe: 'acaso', ordem: 'acaso' }),
+    semPrioridade: guiada('semPrioridade', {}),
+    gastador: guiada('gastador', { pagar: 'sempre', ordem: function (a, b) { return custo(b, a); } }),
+    economico: guiada('economico', { pagar: 'nunca', ordem: custo }),
+    descuidado: guiada('descuidado', { coord: 'acaso', esqueceRevisao: true, ignoraPrazo: true, ordem: 'acaso' }),
     parado: {
       nome: 'parado',
-      decidir: function (estado) {
-        switch (estado.fase) {
-          case 'evento': {
-            const op = OG.eventos.opcoesEvento(estado).filter(function (o) { return o.habilitado; });
-            const recusar = op.find(function (o) { return o.id === 'recusar'; });
-            return { tipo: 'CONFIRMAR_EVENTO', escolha: (recusar || op[0]).id };
+      criar: function () {
+        return function (estado) {
+          switch (estado.fase) {
+            case 'evento': {
+              const op = OG.eventos.opcoesEvento(estado).filter(function (o) { return o.habilitado; });
+              const recusar = op.find(function (o) { return o.id === 'recusar'; });
+              return { tipo: 'CONFIRMAR_EVENTO', escolha: (recusar || op[0]).id };
+            }
+            case 'decisao': {
+              const dec = OG.eventos.decisaoFimRodada(estado);
+              return { tipo: 'RESOLVER_DECISAO', escolha: dec.opcoes.filter(function (o) { return o.habilitado; })[0].id };
+            }
+            case 'resumo': return { tipo: 'AVANCAR' };
+            case 'planejamento': return { tipo: 'ENCERRAR_RODADA' };
+            default: return null;
           }
-          case 'decisao': {
-            const dec = OG.eventos.decisaoFimRodada(estado);
-            return { tipo: 'RESOLVER_DECISAO', escolha: dec.opcoes.filter(function (o) { return o.habilitado; })[0].id };
-          }
-          case 'resumo': return { tipo: 'AVANCAR' };
-          case 'planejamento': return { tipo: 'ENCERRAR_RODADA' };
-          default: return null;
-        }
+        };
       },
     },
   };
 }
 
-/** Joga uma partida inteira. `ajustar(estado)` permite forçar o baralho em cenários de teste. */
-function jogarPartida(OG, missaoId, semente, politica, ajustar) {
-  let estado = OG.motor.criarPartida(missaoId, semente);
-  if (ajustar) estado = ajustar(estado) || estado;
+/** Quem está trabalhando agora: responsáveis e equipes EM ANDAMENTO, e quem revisou na rodada. */
+function ocupados(OG, estado) {
+  const s = new Set();
+  OG.estado.cartasNaColuna(estado, 'andamento').forEach(function (c) {
+    s.add(c.responsavel);
+    c.equipe.forEach(function (id) { s.add(id); });
+  });
+  estado.revisoresDaRodada.forEach(function (id) { s.add(id); });
+  return s;
+}
+
+/**
+ * Joga uma partida inteira.
+ *   config:  { missaoId, duracao, semente, caixaApertado }
+ *   opcoes:  { ajustar(estado) (ex.: forçar o baralho), semente da política }
+ * Retorna estatísticas de uso das pessoas e do caixa ao longo da partida.
+ */
+function jogarPartida(OG, config, politica, opcoes) {
+  const o = opcoes || {};
+  let estado = OG.motor.criarPartida(config);
+  if (o.ajustar) estado = o.ajustar(estado) || estado;
+  const decidir = politica.criar(o.semente || config.semente);
+  const trabalharam = new Set();
+  const rodadasTrabalhadas = {};
+  let somaOcupacao = 0;
+  let rodadasMedidas = 0;
   let menorCaixa = OG.estado.recursos(estado).dinheiro;
   let passos = 0;
+  const limite = 60 * config.duracao + 200;
   while (estado.fase !== 'fim') {
-    const acao = politica.decidir(estado);
+    const acao = decidir(estado);
+    if (estado.fase === 'planejamento' && acao && acao.tipo === 'ENCERRAR_RODADA') {
+      const agora = ocupados(OG, estado);
+      const presentes = OG.estado.todasPessoas().filter(function (p) { return OG.estado.presente(estado, p.id); }).length;
+      agora.forEach(function (id) {
+        trabalharam.add(id);
+        rodadasTrabalhadas[id] = (rodadasTrabalhadas[id] || 0) + 1;
+      });
+      somaOcupacao += agora.size / presentes;
+      rodadasMedidas++;
+    }
     const r = OG.motor.aplicar(estado, acao);
     if (!r.ok) {
       throw new Error('A política "' + politica.nome + '" tentou uma ação inválida: ' + JSON.stringify(acao) + ' -> ' + r.erro);
     }
     estado = r.estado;
     menorCaixa = Math.min(menorCaixa, OG.estado.recursos(estado).dinheiro);
-    if (++passos > 400) throw new Error('Partida não terminou (laço infinito?) com a política ' + politica.nome);
+    if (++passos > limite) throw new Error('Partida não terminou (laço infinito?) com a política ' + politica.nome);
   }
-  return { estado: estado, menorCaixa: menorCaixa, passos: passos };
+  return {
+    estado: estado,
+    menorCaixa: menorCaixa,
+    passos: passos,
+    trabalharam: trabalharam,
+    rodadasTrabalhadas: rodadasTrabalhadas,
+    ocupacao: rodadasMedidas ? somaOcupacao / rodadasMedidas : 0,
+  };
 }
 
-/** Troca o baralho da partida (antes de confirmar o 1º evento). */
+/** Troca o baralho da partida (antes de confirmar o 1º evento). A lista é repetida até cobrir a partida. */
 function forcarBaralho(OG, estado, eventos) {
-  estado.baralho = eventos.slice();
+  estado.baralho = Array.from({ length: estado.config.duracao }, function (_, i) { return eventos[i % eventos.length]; });
   estado.historico = estado.historico.filter(function (h) { return h.tipo !== 'evento'; });
   OG.eventos.revelarEvento(estado);
   return estado;
 }
 
-module.exports = { criarPoliticas, jogarPartida, forcarBaralho };
+module.exports = { criarPoliticas, jogarPartida, forcarBaralho, criarRng };

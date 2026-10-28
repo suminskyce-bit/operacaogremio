@@ -1,10 +1,15 @@
 /*
  * personagens.js — coordenadores e voluntários ficam em listas SEPARADAS.
  *
- * Especialidade: quem é especialista na categoria do projeto dá R$ 10 de desconto
- * no custo (regras.DESCONTO_ESPECIALISTA). "coringa" vale para qualquer categoria.
+ * COORDENADORES (5): cada card que sai do Backlog ganha um coordenador responsável.
+ *   - Ele trabalha no projeto (soma 1 de força) e toca um projeto por vez.
+ *   - area: projeto fora da área do responsável leva +1 rodada (regras.TEMPO_FORA_DA_AREA).
+ *     Sumindo, o Coordenador Geral, é coringa: nunca está fora da área.
+ *   - Só coordenadores revisam, e ninguém revisa o próprio projeto.
  *
- * Só coordenadores fazem a REVISÃO (conferência final) dos projetos.
+ * VOLUNTÁRIOS (13): entram nas equipes. Somam 1 de força; 2 se forem especialistas
+ * na categoria do projeto (Dexter também nos projetos com equipamento). Cada
+ * voluntário especialista na equipe dá R$ 10 de desconto no custo.
  *
  * Foto do JV: o arquivo não veio junto com os outros retratos. Para usar uma foto,
  * coloque `jv.png` em assets/personagens/ e troque `foto: null` por
@@ -15,10 +20,14 @@
   const OG = (global.OG = global.OG || {});
   OG.dados = OG.dados || {};
 
-  function congelar(lista) {
+  function congelar(lista, campo) {
     return Object.freeze(
       lista.map(function (p) {
-        if (p.especialidade) Object.freeze(p.especialidade);
+        if (p[campo]) {
+          if (p[campo].categorias) Object.freeze(p[campo].categorias);
+          if (p[campo].riscos) Object.freeze(p[campo].riscos);
+          Object.freeze(p[campo]);
+        }
         return Object.freeze(p);
       })
     );
@@ -30,37 +39,37 @@
       nome: 'Sumindo',
       cargo: 'Coordenador Geral',
       foto: 'assets/personagens/sumindo.png',
-      especialidade: { rotulo: 'Liderança — qualquer categoria', coringa: true },
+      area: { rotulo: 'Geral — nunca fica fora da área', coringa: true, categorias: [] },
     },
     {
       id: 'antune',
       nome: 'Antune',
       cargo: 'Coordenador Cultural',
       foto: 'assets/personagens/antune.png',
-      especialidade: { rotulo: 'Cultura', categorias: ['cultura'] },
+      area: { rotulo: 'Cultura', categorias: ['cultura'] },
     },
     {
       id: 'luize',
       nome: 'Luize',
       cargo: 'Coordenador de Infraestrutura',
       foto: 'assets/personagens/luize.png',
-      especialidade: { rotulo: 'Estrutura', categorias: ['estrutura'] },
+      area: { rotulo: 'Estrutura', categorias: ['estrutura'] },
     },
     {
       id: 'ryani',
       nome: 'Ryani',
       cargo: 'Coordenadora de Comunicação',
       foto: 'assets/personagens/ryani.png',
-      especialidade: { rotulo: 'Divulgação', categorias: ['divulgacao'] },
+      area: { rotulo: 'Divulgação', categorias: ['divulgacao'] },
     },
     {
       id: 'jv',
       nome: 'JV',
       cargo: 'Coordenador Financeiro',
       foto: null,
-      especialidade: { rotulo: 'Logística e Vendas', categorias: ['logistica'] },
+      area: { rotulo: 'Logística e Vendas', categorias: ['logistica'] },
     },
-  ]);
+  ], 'area');
 
   // Ordem igual à lista oficial dos 13 voluntários.
   OG.dados.voluntarios = congelar([
@@ -149,5 +158,5 @@
       cargo: 'Voluntário',
       especialidade: { rotulo: 'Montagem — Estrutura', categorias: ['estrutura'] },
     },
-  ]);
+  ], 'especialidade');
 })(globalThis);

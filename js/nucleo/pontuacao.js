@@ -1,130 +1,133 @@
 /*
- * pontuacao.js — pontuação final e resumo financeiro.
+ * pontuacao.js — pontuação final, meta da partida e resumo financeiro.
  *
  * Pontuação = dinheiro restante ÷ 10 (arredondado para baixo)
- *           + prestígio + tradição + projetos concluídos × 5
- * A recompensa da missão já entra no dinheiro/prestígio/tradição quando é conquistada.
+ *           + prestígio + tradição + projetos entregues NO PRAZO × 5
+ * Recompensas de missão já entram no dinheiro/prestígio/tradição quando são conquistadas.
+ *
+ * Classificação (aproveitamento): pontos conquistados na partida ÷ pontos que o
+ * planejador do jogo conquistaria na MESMA partida (mesma agenda e mesmos pedidos),
+ * sem imprevistos. "Conquistados" = pontuação − pontos com que o Grêmio começou.
  */
 (function (global) {
   'use strict';
   const OG = (global.OG = global.OG || {});
 
+  function R() { return OG.regras; }
+  function E() { return OG.estado; }
+
   function classificar(aproveitamento) {
-    const lista = OG.regras.CLASSIFICACOES;
+    const lista = R().CLASSIFICACOES;
     for (let i = 0; i < lista.length; i++) {
       if (aproveitamento >= lista[i].minimo) return lista[i].nome;
     }
     return lista[lista.length - 1].nome;
   }
 
+  function caixaInicial(config) {
+    return config.caixaApertado ? R().CAIXA_APERTADO : R().CAIXA_INICIAL;
+  }
+
+  function pontosIniciais(config) {
+    return Math.floor(caixaInicial(config) / R().REAIS_POR_PONTO) + R().PRESTIGIO_INICIAL + R().TRADICAO_INICIAL;
+  }
+
+  /** Pontos de um estado (sem a meta). */
+  function pontosDe(estado) {
+    const rec = E().recursos(estado);
+    const entregues = E().entreguesNoPrazo(estado).length;
+    return Math.floor(rec.dinheiro / R().REAIS_POR_PONTO) + rec.prestigio + rec.tradicao + entregues * R().PONTOS_POR_PROJETO;
+  }
+
   const cacheMeta = {};
 
   /**
-   * Meta da missão: a pontuação do melhor plano possível SEM eventos, com especialistas
-   * em todas as vagas. Testa todas as combinações dos 6 cards que cabem nas vagas que
-   * ainda dão tempo de concluir (2 vagas × 3 rodadas; projetos de 2 rodadas no máximo 1 por vaga).
+   * Meta da partida: o planejador joga a mesma partida sem imprevistos.
+   * Depende só da configuração (missão, duração, semente, caixa), então dá para recalcular
+   * a qualquer momento e o valor salvo no navegador não precisa ser confiável.
    */
-  function metaDaMissao(missaoId, caixaInicial) {
-    const R = OG.regras;
-    const caixa = caixaInicial === undefined ? R.CAIXA_INICIAL : caixaInicial;
-    const chave = missaoId + ':' + caixa;
-    if (cacheMeta[chave] !== undefined) return cacheMeta[chave];
-    const m = OG.dados.missoesPorId[missaoId];
-    const projs = m.projetos.map(function (id) { return OG.dados.projetosPorId[id]; });
-    const capacidade = R.LIMITE_EM_ANDAMENTO * (R.TOTAL_RODADAS - 1);
-    let melhor = 0;
-    for (let mask = 0; mask < (1 << projs.length); mask++) {
-      let tempo = 0;
-      let longos = 0;
-      let dinheiro = caixa;
-      let prestigio = R.PRESTIGIO_INICIAL;
-      let tradicao = R.TRADICAO_INICIAL;
-      let n = 0;
-      projs.forEach(function (p, i) {
-        if (!(mask & (1 << i))) return;
-        tempo += p.tempo;
-        if (p.tempo > 1) longos++;
-        dinheiro += p.retorno - p.custo + R.DESCONTO_ESPECIALISTA * p.trabalhadores;
-        prestigio += p.prestigio;
-        tradicao += p.tradicao;
-        n++;
-      });
-      if (tempo > capacidade || longos > R.LIMITE_EM_ANDAMENTO) continue;
-      if (n >= m.objetivo) {
-        dinheiro += m.recompensa.dinheiro;
-        prestigio += m.recompensa.prestigio;
-        tradicao += m.recompensa.tradicao;
-      }
-      const pontos = Math.floor(dinheiro / R.REAIS_POR_PONTO) + prestigio + tradicao + n * R.PONTOS_POR_PROJETO;
-      if (pontos > melhor) melhor = pontos;
-    }
-    cacheMeta[chave] = melhor;
-    return melhor;
-  }
-
-  function caixaInicialDaPartida(estado) {
-    return estado.livro
-      .filter(function (l) { return l.tipo === 'inicial' && l.recurso === 'dinheiro'; })
-      .reduce(function (s, l) { return s + l.valor; }, 0);
+  function metaDaPartida(config) {
+    const chave = [config.missaoId, config.duracao, config.semente, config.caixaApertado ? 1 : 0].join('|');
+    if (cacheMeta[chave]) return cacheMeta[chave];
+    const fim = OG.planejador.simular(config, { eventosNeutros: true });
+    const total = pontosDe(fim);
+    const meta = {
+      total: total,
+      conquistado: total - pontosIniciais(config),
+      entregues: E().entreguesNoPrazo(fim).length,
+      missoesCumpridas: fim.agenda.filter(function (a) { return a.cumprida; }).length,
+    };
+    cacheMeta[chave] = meta;
+    return meta;
   }
 
   function calcular(estado) {
-    const R = OG.regras;
-    const rec = OG.estado.recursos(estado);
-    const concluidos = OG.estado.totalConcluidos(estado);
+    const rec = E().recursos(estado);
+    const entregues = E().entreguesNoPrazo(estado).length;
+    const atrasados = estado.cartas.filter(function (c) { return c.coluna === 'concluido' && c.noPrazo === false; }).length;
     const itens = [
       {
         id: 'dinheiro',
         rotulo: 'Dinheiro restante',
-        conta: OG.util.formatarDinheiro(rec.dinheiro) + ' ÷ ' + R.REAIS_POR_PONTO,
-        pontos: Math.floor(rec.dinheiro / R.REAIS_POR_PONTO),
+        conta: OG.util.formatarDinheiro(rec.dinheiro) + ' ÷ ' + R().REAIS_POR_PONTO,
+        pontos: Math.floor(rec.dinheiro / R().REAIS_POR_PONTO),
       },
       { id: 'prestigio', rotulo: 'Prestígio', conta: rec.prestigio + ' × 1', pontos: rec.prestigio },
       { id: 'tradicao', rotulo: 'Tradição', conta: rec.tradicao + ' × 1', pontos: rec.tradicao },
       {
         id: 'projetos',
-        rotulo: 'Projetos concluídos',
-        conta: concluidos + ' × ' + R.PONTOS_POR_PROJETO,
-        pontos: concluidos * R.PONTOS_POR_PROJETO,
+        rotulo: 'Projetos entregues no prazo',
+        conta: entregues + ' × ' + R().PONTOS_POR_PROJETO,
+        pontos: entregues * R().PONTOS_POR_PROJETO,
       },
     ];
     const total = itens.reduce(function (s, i) { return s + i.pontos; }, 0);
-    const missao = OG.estado.missao(estado);
-    const caixaInicial = caixaInicialDaPartida(estado);
-    const meta = metaDaMissao(estado.missaoId, caixaInicial);
-    // Os pontos que o Grêmio já tem no começo (caixa + prestígio + tradição iniciais)
-    // não são mérito: o aproveitamento mede só o que foi CONQUISTADO na partida.
-    const pontosIniciais = Math.floor(caixaInicial / R.REAIS_POR_PONTO) + R.PRESTIGIO_INICIAL + R.TRADICAO_INICIAL;
-    const conquistado = total - pontosIniciais;
-    const metaConquista = meta - pontosIniciais;
+    const iniciais = pontosIniciais(estado.config);
+    const conquistado = total - iniciais;
+    const meta = metaDaPartida(estado.config);
+    const metaConquista = Math.max(1, meta.conquistado);
     const aproveitamento = Math.floor((conquistado * 100) / metaConquista);
+    const missoes = estado.agenda.map(function (a) {
+      const m = E().missaoPorId(a.missaoId);
+      return {
+        missaoId: a.missaoId,
+        nome: m.nome,
+        abre: a.abre,
+        data: a.data,
+        situacao: E().situacaoMissao(estado, a),
+        progresso: E().progressoMissao(estado, a.missaoId),
+        objetivo: m.objetivo,
+        recompensa: m.recompensa,
+      };
+    });
     return {
       itens: itens,
       total: total,
-      meta: meta,
-      pontosIniciais: pontosIniciais,
+      entregues: entregues,
+      atrasados: atrasados,
+      pontosIniciais: iniciais,
       conquistado: conquistado,
+      meta: meta,
       metaConquista: metaConquista,
       aproveitamento: aproveitamento,
       classificacao: classificar(aproveitamento),
-      concluidos: concluidos,
-      missaoCumprida: !!estado.missaoCumprida,
-      objetivo: missao.objetivo,
-      recompensa: missao.recompensa,
+      missoes: missoes,
+      missoesCumpridas: missoes.filter(function (m) { return m.situacao === 'cumprida'; }).length,
     };
   }
 
-  /** Números para a aula de educação financeira da tela final. */
+  /** Números para a aula de educação financeira (tela final e aba Finanças). */
   function resumoFinanceiro(estado) {
     const r = {
       caixaInicial: 0,
       investido: 0, // custos pagos para iniciar projetos
-      receitaProjetos: 0, // retornos recebidos de projetos concluídos
-      outrasReceitas: 0, // patrocínio, professor, recompensa da missão
+      receitaProjetos: 0, // retornos recebidos (inclui metade dos atrasados)
+      outrasReceitas: 0, // patrocínio, professor, recompensas de missão
       despesas: 0, // despesas inesperadas pagas
-      investimentoParado: 0, // custo de projetos pagos que não foram concluídos
+      investimentoParado: 0, // pago e não concluído (em andamento, revisão, devolvido ou vencido)
       lucroProjetosConcluidos: 0,
-      caixaFinal: OG.estado.recursos(estado).dinheiro,
+      perdaPorAtraso: 0, // retorno que deixou de entrar por entregar depois do prazo
+      caixaFinal: E().recursos(estado).dinheiro,
     };
     estado.livro.forEach(function (l) {
       if (l.recurso !== 'dinheiro') return;
@@ -137,17 +140,23 @@
     estado.cartas.forEach(function (c) {
       if (c.custoPago === null) return;
       if (c.coluna === 'concluido') {
-        r.lucroProjetosConcluidos += OG.estado.projetoDaCarta(c).retorno - c.custoPago;
+        r.lucroProjetosConcluidos += c.retornoRecebido - c.custoPago;
+        if (!c.noPrazo) r.perdaPorAtraso += E().projetoDaCarta(c).retorno - c.retornoRecebido;
       } else {
         r.investimentoParado += c.custoPago;
       }
+    });
+    estado.arquivo.forEach(function (a) {
+      if (a.custoPago) r.investimentoParado += a.custoPago;
     });
     return r;
   }
 
   OG.pontuacao = {
     classificar,
-    metaDaMissao,
+    pontosIniciais,
+    pontosDe,
+    metaDaPartida,
     calcular,
     resumoFinanceiro,
   };

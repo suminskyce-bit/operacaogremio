@@ -1,8 +1,9 @@
-# Operação Grêmio — Mesquita
+# Operação Grêmio — Mesquita · versão 2.0
 
-Jogo web de **Kanban** com **educação financeira**. O Grêmio Estudantil da Escola Técnica Mesquita
-precisa tirar um evento do papel em **4 rodadas** (uns 20 minutos): escolher projetos, montar a equipe,
-cuidar do caixa e encarar os imprevistos.
+Jogo web de **Kanban** com **educação financeira**. O Grêmio Estudantil da Escola Técnica Mesquita organiza
+os eventos da escola num quadro Kanban: **todo card precisa de um coordenador responsável e de uma equipe**,
+cada pessoa trabalha em um projeto por vez, os prazos importam e **pedidos novos chegam a cada rodada**.
+Antes de começar, você escolhe a duração: **4, 8, 10 ou 26 rodadas**.
 
 Não precisa instalar nada para jogar. Não usa internet, servidor nem banco de dados: tudo roda no navegador
 e a partida fica salva no próprio navegador.
@@ -16,58 +17,95 @@ e a partida fica salva no próprio navegador.
 
 | Jeito | Como | Precisa de |
 |---|---|---|
-| **Live Server** (recomendado) | O VS Code vai sugerir a extensão *Live Server*. Instale, clique com o botão direito em `index.html` → **Open with Live Server**. A página recarrega sozinha quando você salva um arquivo. | Extensão Live Server |
+| **Live Server** (recomendado) | O VS Code vai sugerir a extensão *Live Server*. Instale, clique com o botão direito em `index.html` → **Open with Live Server**. | Extensão Live Server |
 | **Duplo clique** | Abra `index.html` direto no navegador (ou aperte **F5** no VS Code e escolha *Abrir o jogo no Chrome*). | Nada |
 | **Servidor do projeto** | No terminal do VS Code: `npm start` e abra `http://localhost:5173`. | Node.js 18+ |
 
 Quer mandar o jogo para alguém? `npm run arquivo-unico` gera `dist/operacao-gremio-mesquita.html`, **um arquivo único**
 com tudo dentro (fontes e fotos incluídas). É só abrir com duplo clique.
 
----
-
 ## Publicar na internet
 
-### Vercel (pelo GitHub)
+**Vercel (pelo GitHub):** os arquivos `index.html`, `package.json` e `vercel.json` precisam ficar **na raiz do repositório**.
+No Vercel: **Add New → Project**, escolha o repositório e **Deploy**. O `vercel.json` já define o build (`npm run build`),
+a pasta publicada (`public`) e o tipo de projeto (*Other*). Nada mudou na publicação em relação à versão 1.0.1.
 
-1. No GitHub, os arquivos `index.html`, `package.json` e `vercel.json` precisam ficar **na raiz do repositório**,
-   e não dentro de uma subpasta. Ao enviar pelo site do GitHub, arraste **o conteúdo** da pasta do projeto.
-   Se preferir deixar numa subpasta, informe essa pasta em *Root Directory* nas configurações do projeto no Vercel.
-2. No Vercel: **Add New → Project**, escolha o repositório e clique em **Deploy**. Não precisa mudar nada:
-   o `vercel.json` já define o build (`npm run build`), a pasta publicada (`public`) e o tipo de projeto (*Other*).
-   Ele vale mais que o que estiver no painel, então funciona mesmo se você tiver mexido nas configurações antes.
-3. A cada push no GitHub, o Vercel publica de novo sozinho.
-
-O `npm run build` monta a pasta `public/` só com o site (`index.html`, `css`, `js`, `assets`) e confere se todo
-arquivo citado existe. Se faltar algo (uma foto, por exemplo), o build falha com a lista do que faltou,
-em vez de publicar um site quebrado. Para ver no seu computador exatamente o que vai para o ar: `npm run preview`.
-
-### GitHub Pages (sem build)
-
-**Settings → Pages → Deploy from a branch → `main` / `(root)`**. O site funciona direto da raiz do repositório
-(o arquivo `.nojekyll` já está incluído para o GitHub não processar nada).
+**GitHub Pages (sem build):** **Settings → Pages → Deploy from a branch → `main` / `(root)`**.
 
 ---
 
 ## Como jogar
 
-1. **Leia o evento da rodada.** Toda rodada começa com uma carta (imprevisto, boa notícia ou despesa). Ela vale para a rodada inteira.
-2. **Planeje:** arraste projetos do **Backlog** para **A fazer** (ou use o botão *Planejar*).
-3. **Inicie:** leve o projeto para **Em andamento**, escolha a equipe e pague o custo. **Máximo de 2 ao mesmo tempo.**
-4. **Encerre a rodada:** cada projeto em andamento ganha 1 rodada de progresso. Quem completa vai sozinho para **Revisão**.
-5. **Revise:** na rodada seguinte, um **coordenador** livre confere o projeto e ele vai para **Concluído**. Só aí entram retorno, prestígio e tradição.
-6. **Cumpra a missão** (concluir 4 dos 6 projetos) antes do fim da rodada 4.
+1. **Escolha a duração e a missão de abertura.** Rápida (4 rodadas, ≈ 20 min, 1 missão), Média (8, ≈ 40 min, 2 missões),
+   Longa (10, ≈ 50 min, 3 missões) ou Ano letivo (26, ≈ 2 h, as 10 missões). Nas partidas longas, as outras missões são
+   sorteadas e chegam ao longo do jogo.
+2. **Leia o evento da rodada.** Uma carta por rodada: imprevisto, boa notícia ou despesa. Vale para a rodada inteira.
+3. **Planejar = escolher quem vai tocar.** Leve um card do **Backlog** para **A fazer** escolhendo o **coordenador
+   responsável**. A janela *Quem vai tocar?* compara os 5: quanto tempo cada um leva, se é da área, quando consegue
+   começar e se cabe no prazo. Ninguém vem marcado: a escolha é sua.
 
-Regras importantes:
+   | Coordenador | Área |
+   |---|---|
+   | Sumindo — Coordenador Geral | **coringa**: nunca fica fora da área |
+   | Antune — Coordenador Cultural | Cultura |
+   | Luize — Coordenador de Infraestrutura | Estrutura |
+   | Ryani — Coordenadora de Comunicação | Divulgação |
+   | JV — Coordenador Financeiro | Logística e Vendas |
 
-- **Custo** é pago uma vez, ao iniciar. **Retorno** entra uma vez, ao concluir. *Retorno não é lucro*: lucro = retorno − custo.
-- O caixa **nunca fica negativo**. Despesa obrigatória sem dinheiro: paga-se o que houver e o resto vira desgaste (−1 Prestígio a cada R$ 10,00).
-- **Especialista** na categoria do projeto: R$ 10,00 de desconto por pessoa.
-- **Só coordenadores revisam**, e quem revisou fica ocupado até o fim da rodada.
-- Projeto iniciado na última rodada **não termina a tempo**. O jogo avisa no card e na hora de iniciar.
-- Ícones nos cards mostram **riscos** (quadra, equipamento, fornecedor, mesas): alguns eventos miram esses projetos.
+   Fora da área, o projeto leva **+1 rodada**. Esporte e Games não têm coordenador da área: só o Sumindo toca esses sem atraso.
+   Cada coordenador pode ter até **2 cards em A fazer**.
+4. **Iniciar = montar a equipe e pagar.** O responsável **trabalha no projeto** (força 1) e **toca um projeto por vez**.
+   A força necessária é o tamanho do card + 3. Cada voluntário soma 1; **especialista na categoria soma 2** e dá
+   R$ 10 de desconto. **Ninguém pode sobrar** na equipe (gente sobrando poderia estar em outro projeto).
+   O botão *Sugerir equipe enxuta* ajuda, mas não escolhe por você.
+5. **Encerrar a rodada.** Projetos com a força completa ganham 1 rodada de execução. Quem termina vai para **Revisão** e libera a equipe.
+6. **Revisar.** **Outro** coordenador confere (ninguém revisa o próprio; cada um revisa 1 por rodada). Quem estava livre no
+   começo da rodada revisa sem custo; quem está no meio de um projeto para, e o projeto dele **não anda** nessa rodada.
+7. **Prazos.** O **farol do card** mostra a situação, como as datas dos quadros Kanban de verdade:
+   **verde** = entregue no prazo, **amarelo** = no limite, **vermelho** = atrasado ou sem tempo.
+   Card que não começa até o prazo **sai do quadro**. Entregue depois do prazo: **metade do retorno**, sem prestígio nem
+   tradição, e não conta para a missão.
+8. **Missões e pedidos.** Cada missão pede **4 dos 6 projetos dela concluídos no prazo** (fica aberta 4 rodadas).
+   **2 pedidos avulsos** chegam no começo de cada rodada, com prazo curto: não dá para fazer tudo, escolha o que vale a pena.
 
-**Pontuação** (como pedido): `caixa ÷ 10 + prestígio + tradição + 5 por projeto concluído`, só com números inteiros.
-A tela final mostra a conta linha por linha.
+**Dinheiro:** o custo é pago uma vez, ao iniciar; o retorno entra uma vez, ao concluir. *Retorno não é lucro* (lucro = retorno − custo).
+O caixa nunca fica negativo; despesa obrigatória sem dinheiro vira perda de prestígio (−1 a cada R$ 10).
+
+**Pontuação:** `caixa ÷ 10 + prestígio + tradição + 5 por projeto entregue no prazo`.
+
+**Classificação (a meta):** o jogo calcula a meta **da sua partida**: o planejador do próprio jogo joga a mesma partida
+(mesma agenda, mesmos pedidos) sem imprevistos. Aproveitamento = pontos que você conquistou ÷ pontos que ele conquistaria.
+**100%+** GRÊMIO LENDÁRIO · **85%** DESTAQUE · **70%** APROVADO · **50%** SOBREVIVEU · abaixo: A DIREÇÃO QUER CONVERSAR.
+
+---
+
+## O que mudou na versão 2.0 (pedido → o que foi feito)
+
+| Pedido | O que foi feito |
+|---|---|
+| "faça os coordenadores poderem trabalhar" | Todo card tem um **coordenador responsável** que trabalha nele e toca **um projeto por vez**. Cada um tem uma **área**: fora dela, +1 rodada. Sumindo é o coringa. Só coordenadores revisam (e nunca o próprio projeto). |
+| "que necessite usar as pessoas, de forma inteligente, e acabe usando todos os personagens" | **Força de trabalho**: cada card exige força (tamanho + 3), especialista vale 2, ninguém pode sobrar, até **5 projetos ao mesmo tempo** (um por coordenador). Medido na simulação: o jogador bem organizado usa em média **16,8 das 17 pessoas fixas** numa partida rápida (todas em 34 de 40 partidas; todas sempre nas de 8 e 10 rodadas). Na versão 1.0 eram 5,3. A ocupação média subiu de **21% para 69%**. |
+| "antes do jogo, opções de 4, 8, 10 e 26 rodadas" | Tela **Nova partida** com as 4 durações (e quantas missões cada uma tem) antes de escolher a missão. A escolha fica salva. |
+| "projetos sendo criados durante o game" | **23 pedidos avulsos novos** (todas as categorias) chegam 2 por rodada, com prazo curto, e as **missões abrem ao longo da partida** nas durações maiores. |
+| "aquele verde do Kanban normal" | Interpretado como o **selo de prazo dos quadros Kanban** (como no Trello): verde quando entregue no prazo, amarelo no limite, vermelho atrasado. Os cards também ganharam o jeito de quadro de verdade: etiquetas de categoria e de missão, responsável com foto, equipe, limite de trabalho por pessoa. |
+| "pensar bem onde botar cada coordenador" | Janela **Quem vai tocar?** com a comparação dos 5 coordenadores e **faixa da coordenação** acima do quadro (quem está livre, tocando o quê, fila). Pôr coordenador ao acaso custa caro (ver simulação). |
+| "alterações de meta" | Meta **por partida**, calculada pelo planejador do jogo na mesma partida; faixas recalibradas (100/85/70/50). |
+
+### Mudanças de regra em relação à especificação e à versão 1.0 (e por quê)
+
+| # | Antes | Agora | Por quê |
+|---|---|---|---|
+| 1 | Máximo de **2** projetos em andamento no quadro todo | **1 por coordenador** (até 5) + até 2 em *A fazer* por coordenador | Com limite 2, 21% da equipe trabalhava e só ~5 das 17 pessoas eram usadas: exatamente o problema relatado. O limite continua existindo, mas **por pessoa**, como nos quadros Kanban de equipes. |
+| 2 | "Trabalhadores" = número de pessoas | **Força** = tamanho + 3; voluntário 1, especialista 2, responsável 1; sem sobra | Faz a escolha da equipe importar (especialista economiza gente e dinheiro) e obriga a usar todo mundo quando há 5 projetos rodando. |
+| 3 | Qualquer coordenador livre revisava e ficava ocupado | Outro coordenador revisa (1 por rodada); quem para no meio de um projeto atrasa o próprio | Com coordenadores tocando projetos, revisar passou a ter custo real de oportunidade. |
+| 4 | Sem prazos por card | Prazo em todo card; vencido sai do quadro; atrasado rende metade | Prazos são o que torna a priorização do Kanban uma decisão. |
+| 5 | "Acabou o Chimarrão": só 1 card começa · "Semana de Provas": só 1 card se move | **Só 2** em cada | Com até 5 projetos simultâneos, "só 1" travava a rodada inteira. |
+| 6 | Pontuação: 5 por projeto **concluído** | 5 por projeto **entregue no prazo** | Coerente com os prazos. |
+| 7 | Classificação 100 / 80 / 60 / 40 sobre a meta da missão | 100 / 85 / 70 / 50 sobre a meta **da partida** | Na simulação, quem faz o fluxo certo mas põe coordenador e equipe ao acaso fica em 54–66%: com as faixas antigas isso era APROVADO. Agora é SOBREVIVEU, e escolher bem passa de 85%. |
+| 8 | Baralho com regras para 4 rodadas | Mesmas regras em blocos de 4 rodadas (≥1 positivo, ≤1 severo por bloco, nunca severo na rodada 1, sem repetir em rodadas seguidas) | Funciona para 4, 8, 10 e 26 rodadas. |
+| 9 | Caixa inicial R$ 500 | **Mantido** | Ver "Dinheiro" nas limitações. |
+
+Partidas salvas pela versão 1.0 são descartadas ao abrir a 2.0 (o jogo avisa): as regras mudaram.
 
 ---
 
@@ -75,24 +113,23 @@ A tela final mostra a conta linha por linha.
 
 ```
 index.html               página única; a ordem dos <script> é a ordem de carregamento
-css/estilo.css           visual (roxo Mesquita, painéis brancos), responsivo
-js/dados/                personagens, projetos (catálogo), missões, eventos e despesas
+css/estilo.css           visual (roxo Mesquita, painéis brancos), responsivo de 320 a 1920 px
+js/dados/                personagens (áreas e especialidades), projetos e pedidos, missões, eventos
 js/nucleo/               regras do jogo, sem nada de interface:
-  estado.js                leitura do estado (recursos vêm do livro-caixa)
-  kanban.js                movimentos, limite de 2, equipe, revisão, mutirão
-  financas.js              custos, descontos, despesas, caixa nunca negativo
+  regras.js                todos os números (durações, força, limites, caixa, faixas)
+  estado.js                leitura do estado: recursos, força, área, farol do prazo, quem está livre
+  agenda.js                agenda de missões e pedidos (sorteio próprio, vem da semente da partida)
+  kanban.js                planejar, trocar responsável, iniciar, revisar, completar equipe, mutirão
+  financas.js              livro-caixa, custos, descontos, despesas
   eventos.js               baralho, efeitos imediatos e de fim de rodada
-  rodada.js                fim de rodada e passagem de rodada
-  pontuacao.js             pontuação, meta da missão, resumo financeiro
+  rodada.js                fim de rodada: execução, prazos, missões, passagem de rodada
+  planejador.js            o "Grêmio bem organizado": calcula a meta e as sugestões
+  pontuacao.js             pontuação, meta, resumo financeiro
   motor.js                 ponto único de entrada: OG.motor.aplicar(estado, ação)
   persistencia.js          salvar/carregar com validação completa
-js/interface/            telas, componentes, janelas, arrastar e soltar, teclado
-assets/                  fotos da coordenação e a fonte Archivo (embutida, funciona offline)
-tests/                   testes automáticos, fuzzing, simulação e teste de interface
-tools/                   preparar publicação (public/), servidor local e gerador do arquivo único
-vercel.json              configuração de publicação no Vercel
-public/                  gerada pelo "npm run build" (não vai para o GitHub)
-dist/                    gerada pelo "npm run arquivo-unico" (não vai para o GitHub)
+js/interface/            telas, janelas, arrastar e soltar, teclado
+tests/                   testes do núcleo, fuzzing, simulação e teste de interface (Playwright)
+tools/                   preparar publicação (public/), servidor local, arquivo único
 ```
 
 Toda regra mora no **núcleo**. A interface só pergunta ao núcleo se pode e mostra o motivo quando não pode.
@@ -103,103 +140,87 @@ Uma ação inválida devolve o estado intacto e uma mensagem.
 ## Testes
 
 ```bash
-npm test            # 94 testes: núcleo do jogo + publicação (Node 18+, sem instalar nada)
-npm run simular     # simulação de balanceamento (milhares de partidas)
-npm run test:e2e    # teste da interface no navegador (opcional, precisa do Playwright)
-npm run build       # monta public/ para publicar
-npm run preview     # monta public/ e abre em http://localhost:5173, igual ao site publicado
+npm test                          # núcleo, fuzzing, simulações de design e publicação (Node 18+, sem instalar nada)
+npm run simular                   # simulação de balanceamento em todas as durações
+npm run test:e2e                  # interface no navegador (precisa do Playwright); inclui 1 partida de 26 rodadas
+E2E_RAPIDO=1 npm run test:e2e     # o mesmo, sem a partida de 26 rodadas
 ```
 
 Para o teste de interface: `npm install --no-save playwright && npx playwright install chromium`.
 
 ### O que foi executado nesta entrega
 
-- **94 testes, todos passando**: valores do catálogo conferidos card a card contra a especificação, nomes,
-  missões, Kanban, limite de 2, equipe, revisão, cada um dos 20 eventos, despesas, descontos, rodadas,
-  pontuação e persistência (16 tipos de estado adulterado são recusados). Mais 4 de publicação: `vercel.json`
-  e `package.json` combinando, `public/` completa e sem arquivos internos, build que não apaga pasta alheia
-  e que falha se faltar arquivo.
-- **Fuzzing**: mais de 50 mil ações aleatórias (válidas, inválidas, repetidas, fora de hora) em 300 partidas.
-  Depois de cada ação conferimos que o caixa nunca fica negativo, que nunca há mais de 2 em andamento,
-  que ninguém está em dois projetos, que custo e retorno são lançados no máximo uma vez e que o estado continua válido.
-- **17 casos de interface no Chromium**, rodados no `index.html` **e** no arquivo único: partidas completas
-  clicando como um jogador (Farroupilha, Halloween, Liga, Semana do Estudante, Show de Talentos em caixa apertado,
-  e Farroupilha no celular), conferindo a cada passo se caixa, prestígio, tradição e cards na tela batem com o estado real;
-  arrastar e soltar (válido e inválido); terceiro projeto bloqueado com explicação; recarregar a página no meio da rodada;
-  nova partida pedida durante um evento; só teclado (foco preso na janela, Esc, foco acompanhando o card);
-  celular 390×844 e tablet 900×1100; partida salva adulterada; nenhum erro no console.
-- **Layout medido em 15 larguras (320 a 1920 px)**: sem rolagem lateral da página, sem coluna escondida, sem texto estourando os cards.
-- **Publicação no Vercel** (versão 1.0.1): com o Vercel CLI 64.7.0 rodando localmente, a versão anterior reproduz o erro
-  `STATIC_BUILD_NO_OUT_DIR` e a atual compila ("Build completed successfully"). Os 17 casos de interface passam
-  jogando direto da pasta que o Vercel gera para publicar.
+- **`npm test`: 127 testes, todos passando** (Node 22). Entre eles:
+  - regras do Kanban, responsável, fila de 2, um projeto por coordenador, força, equipe sem sobra, área (+1 rodada),
+    revisão (1 por coordenador, ninguém revisa o próprio, pausa de quem para no meio), prazos (vencido sai, atraso
+    rende metade), cada um dos 20 eventos, agenda e pedidos nas 4 durações, pontuação e meta;
+  - **persistência**: salvar e carregar em **cada passo** de partidas inteiras; **43 tipos de estado adulterado**
+    recusados, cada um pelo motivo certo (custo cobrado duas vezes, retorno pago duas vezes, efeito de evento repetido,
+    coordenador tocando dois projetos, pessoa em duas equipes, prazo esticado, agenda adulterada…); partida da 1.0 reconhecida;
+  - **fuzzing**: 23 mil ações aleatórias (válidas, inválidas, repetidas, fora de hora) em 92 partidas de 4, 8, 10 e 26
+    rodadas; depois de **cada** ação conferimos caixa ≥ 0, um projeto por coordenador, ninguém em duas equipes, coordenador
+    fora de equipe, custo e retorno no máximo uma vez **por card** e estado válido;
+  - **design**: o planejador passa de 85% de aproveitamento; pôr coordenador ao acaso perde mais de 15 pontos;
+    jogar sem pensar fica abaixo de 70%; não fazer nada dá A DIREÇÃO QUER CONVERSAR; os 5 coordenadores trabalham;
+    toda missão é possível na partida rápida; caixa apertado continua jogável.
+- **19 casos de interface no Chromium (Playwright), todos passando**: partidas completas **clicando** em 4, 4, 8, 10 e
+  **26 rodadas** (conferindo a cada passo se caixa, prestígio, tradição, rodada e cards na tela batem com o estado real e se
+  o estado continua válido); escolha de duração salva e configuração estragada ignorada; partida "parada";
+  arrastar e soltar; coordenador ocupado bloqueado com explicação; equipe que não deixa sobrar gente; recarregar no meio
+  da rodada; nova partida durante um evento; só teclado; celular 390×844 jogando até o fim; tablet 900×1100;
+  **10 larguras de 320 a 1920 px sem rolagem lateral**; caixa apertado; salvo adulterado e salvo da 1.0; console sem erros.
+  Os 18 casos do modo rápido também passam no **arquivo único** e na pasta que o **Vercel** gera.
+- **Vercel CLI 65.4.0** (local, numa cópia limpa): `vercel build` → *Build completed successfully*, com `index.html`, `css`, `js` e `assets`.
+
+### Simulação (`npm run simular`, 40 partidas por duração e perfil; 10 nas de 26 rodadas)
+
+Aproveitamento médio de cada perfil de jogador automático:
+
+| Perfil | 4 rodadas | 8 | 10 | 26 |
+|---|---|---|---|---|
+| Planejador (bem organizado, com imprevistos) | 97% | 96% | 98% | 94% |
+| Coordenador recomendado + equipe enxuta, sem priorizar cards | 86% | 85% | 82% | 72% |
+| Equipe ao acaso (coordenador bom) | 79% | 76% | 74% | 64% |
+| Coordenador ao acaso (equipe boa) | 66% | 64% | 63% | 56% |
+| Coordenador, equipe e card ao acaso | 60% | 60% | 57% | 54% |
+| Descuidado (esquece revisões, começa o que não cabe) | 31% | 26% | 26% | 21% |
+| Parado | 1% | 1% | 1% | 1% |
+
+- **Gente usada** (planejador): os 5 coordenadores em toda partida; 16,8 das 17 pessoas fixas em média na partida rápida e todas nas de 8, 10 e 26 rodadas; ocupação média de 69% (4 rodadas) a 85% (26).
+  Cada coordenador trabalha em 78–98% das rodadas; cada voluntário em 54–89%.
+- **Missões**: o planejador cumpre 98–100% em todas as missões de abertura na partida rápida; 99–100% nas longas.
+  Jogando sem pensar: 41–83%.
+- **Eventos**: nenhum evento isolado derruba a missão; o pior (Semana de Provas) tira ~7 pontos de aproveitamento.
+  Só eventos negativos: 85–87%. Só positivos: 110–111%.
+- **Classificação do planejador**: Lendário 33–43% e Destaque 48–65% nas partidas de até 10 rodadas; Destaque nas de 26.
 
 ---
 
-## Balanceamento: o que mudei da especificação e por quê
+## Limitações conhecidas (sem esconder nada)
 
-A especificação pedia para corrigir o que não funcionasse e documentar. Os números abaixo vêm de
-`npm run simular` (300 partidas por missão e por perfil de jogador).
-
-| # | O que estava | Problema encontrado | O que fiz |
-|---|---|---|---|
-| 1 | Classificação por pontos: 100 / 80 / 60 / 40 | Só o caixa e os recursos iniciais já valem **90 pontos**: quem não fizesse **nada** seria "GRÊMIO DESTAQUE". E cada missão rende diferente (Farroupilha ~280 pontos, Show de Talentos ~228). | Os mesmos 100 / 80 / 60 / 40 passaram a ser **% de aproveitamento**: pontos conquistados na partida ÷ pontos que o melhor plano possível conquistaria (calculado dos próprios cards, sem eventos). A tela final explica a conta. |
-| 2 | Missões Gamer, Liga, Profissões e Concolor pediam 3 projetos | Cumpridas em **98–100%** das partidas: virava formalidade. | Todas pedem **4 de 6**. Recompensas mantidas. |
-| 3 | Liga e Concolor só tinham projetos de 1 rodada | Sem a decisão "projeto grande e arriscado ou vários pequenos". | Liga ganhou **Atletismo** (2 rodadas) e **Queimada**; **Preparação dos Times** do Concolor dura 2 rodadas. Toda missão tem um projeto grande. |
-| 4 | "Acabou o Chimarrão": nenhum card entra em andamento | Só 3 rodadas permitem começar projetos que terminam. Na rodada 3, esse evento zerava a missão em **100%** das simulações. | Agora **só UM** card pode começar na rodada. Revisões continuam liberadas. |
-| 5 | Baralho livre | Partidas só de punição, ou dois eventos que travam a rodada juntos. | Por partida: **pelo menos 1 evento positivo**, no máximo 1 evento severo (Chimarrão ou Provas) e **nunca na rodada 1** (ainda não há nada para terminar). |
-| 6 | Caixa inicial R$ 500 | Mantido. Mas com esse valor o caixa nunca passa de ~R$ 240 para baixo: o dinheiro conta pontos e ensina, mas não trava decisões. | Padrão continua **R$ 500**. Em *Configurações* há o **Caixa apertado (R$ 200)**: aí o caixa zera em parte das partidas e pagar ou não pagar vira decisão de verdade. |
-
-Interpretações que precisei fixar (a especificação não dizia):
-
-- **Eventos** são sorteados no **início** da rodada (vários dizem "nesta rodada"). Efeitos que dependem dos projetos
-  em andamento (reunião, fornecedor, equipamento, mesas) são resolvidos ao encerrar a rodada, com escolha do jogador.
-  Dá para se preparar, e dá para voltar ao quadro antes de decidir.
-- **Revisão exige um coordenador** (a "conferência final"). Isso dá função à coluna Revisão e diferencia coordenadores de voluntários.
-- **Patrício** é o coringa: só aparece com o evento "Patrício Ajudou" (o texto diz que ele *apareceu*) e fica 2 rodadas.
-  Não pode entrar num projeto mais longo do que a estadia dele. Se um evento atrasar o projeto, ele vai embora
-  e o card pede "Completar equipe".
-- **Semana de Provas**: só **um card** se move na rodada, mas ele pode avançar mais de uma etapa. Sem isso,
-  na rodada 1 seria impossível começar qualquer coisa (tudo começa no Backlog).
-- **Quadra em reforma** para os projetos que **usam a quadra**. Xadrez e Truco são da Liga, mas não usam quadra.
-- **Recompensa da missão** entra na hora em que o objetivo é atingido (uma única vez).
-- **Cards criados** para completar 6 por missão (mesma curva de custo e retorno dos originais):
-  Transmissão ao Vivo, Queimada, Atletismo, Sarau do Mesquita, Oficina de Danças Gaúchas, Oficina de Currículo,
-  Ensaio Geral, Preparação dos Times, e Campeonato, Festa e Show (citados na Semana do Estudante sem valores).
-- **Especialidades** dos voluntários sem especialidade definida: Agatha Cross e Giulie (Cultura), Costit (Esporte),
-  Wiky e Potter (Games), Wliam Woka (Logística e Vendas), Monica (Divulgação), Maicon (Estrutura).
-
-### Resultado da simulação (todas as missões)
-
-| Perfil de jogador | Missão cumprida | Classificação mais comum |
-|---|---|---|
-| Planeja bem | 98–100% | Lendário (53%) ou Destaque (46%) |
-| Só projetos baratos | 98–100% | Destaque (76%), cerca de 20 pontos a menos |
-| Descuidado (esquece revisões, começa tarde) | 14–16% | Sobreviveu (50%) |
-| Não faz nada | 0% | A Direção quer conversar (100%) |
-
-Nenhum evento isolado derruba a missão do bom jogador para menos de 91%. Só eventos negativos: 92% de missões cumpridas.
-
----
-
-## Limitações conhecidas
-
-- **Arrastar e soltar não funciona com o dedo** (celular/tablet): é uma limitação do arrastar nativo dos navegadores.
-  No toque, use os botões dos cards (*Planejar*, *Iniciar*, *Revisar*). Eles fazem exatamente o mesmo.
-- Testado automaticamente só no **Chromium** (base do Chrome e do Edge). Não foi testado em Safari, Firefox nem em celulares reais.
-- O balanceamento foi validado com **jogadores simulados**. Alunos de verdade vão errar mais que o robô "planeja bem".
-  Vale uma rodada de teste com a turma antes de apresentar.
+- **Dinheiro raramente aperta com R$ 500**: o menor caixa do planejador fica em R$ 170. O gargalo do jogo agora é
+  **gente** (coordenadores e especialistas), e o dinheiro vale pontos (34–39% da pontuação), descontos e as decisões de
+  pagar ou não as despesas dos eventos. Quem quiser pressão financeira de verdade liga o **Caixa apertado (R$ 200)**
+  em *Configurações*: aí o caixa chega a zero e o planejador continua conseguindo jogar (94–97% de aproveitamento).
+- Os tempos (≈ 20 min, 40 min, 50 min, 2 h) são **estimativas**: o jogador bem organizado faz cerca de 10 ações por rodada,
+  mas não foi cronometrado com alunos. A partida de 26 rodadas é longa: ela fica salva e dá para continuar depois.
+- A meta é calculada pelo **planejador do jogo**, que é bom mas não é perfeito: dá para passar de 100% (GRÊMIO LENDÁRIO).
+- **Patrício** (só com evento) e os eventos de desconto pesam pouco na pontuação: são mais tempero que estratégia.
+- **Arrastar e soltar não funciona com o dedo** (limitação do arrastar nativo dos navegadores). No toque, os botões
+  dos cards fazem exatamente o mesmo.
+- Testado automaticamente só no **Chromium** (Chrome/Edge). Safari, Firefox e celulares reais não foram testados.
+- O balanceamento foi validado com **jogadores simulados**. Vale uma partida de teste com a turma antes de apresentar.
 - A **foto do JV** não veio no arquivo: aparecem as iniciais. Para usar uma foto, coloque `jv.png` em `assets/personagens/`
   e troque `foto: null` por `foto: 'assets/personagens/jv.png'` em `js/dados/personagens.js`.
-- Com 17 pessoas e no máximo 2 projetos rodando, **a quantidade de gente nunca falta**. O que pesa é quem é especialista
-  e guardar coordenadores para revisar. Isso é consequência direta da regra de limite 2, que é o coração do Kanban.
-- Leitores de tela (NVDA, VoiceOver) não foram testados de verdade. A navegação por teclado, os rótulos e os avisos falados foram implementados e testados por teclado.
+- Leitores de tela (NVDA, VoiceOver) não foram testados de verdade; a navegação por teclado foi.
 - A partida fica salva **neste navegador**. Em janela anônima pode não salvar (o jogo avisa).
 
 ## Para mexer no jogo
 
-- Números gerais (rodadas, caixa inicial, limite, desconto): `js/nucleo/regras.js`
-- Cards: `js/dados/projetos.js` · Missões: `js/dados/missoes.js` · Eventos: `js/dados/eventos.js` · Personagens: `js/dados/personagens.js`
-- Depois de mudar valores, rode `npm test` e `npm run simular` para ver se nada quebrou e se continua equilibrado.
+- Números gerais (durações, força, limites, caixa, faixas): `js/nucleo/regras.js`
+- Cards e pedidos: `js/dados/projetos.js` · Missões: `js/dados/missoes.js` · Eventos: `js/dados/eventos.js` · Personagens e áreas: `js/dados/personagens.js`
+- Depois de mudar valores, rode `npm test` e `npm run simular`. Se mudar alguma regra, aumente `VERSAO_ESTADO` em `regras.js`
+  (partidas salvas com as regras antigas passam a ser descartadas com aviso, em vez de carregar errado).
 
 ## Créditos
 

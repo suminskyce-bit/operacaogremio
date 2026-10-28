@@ -1,11 +1,14 @@
 /*
  * missoes.js — cada missão oferece exatamente 6 cards (uma seleção do catálogo).
- * objetivo: quantos projetos da missão precisam chegar em CONCLUÍDO.
+ * objetivo: quantos projetos da missão precisam chegar em CONCLUÍDO dentro do prazo.
  * recompensa: aplicada UMA vez, no momento em que o objetivo é atingido.
  *
- * Ajuste de balanceamento (ver README): as missões que pediam 3 projetos eram
- * cumpridas em 98–100% das partidas simuladas — virava formalidade. Todas passaram a
- * pedir 4 de 6, e todas têm exatamente um projeto de 2 rodadas (o "projeto grande").
+ * Na partida, cada missão ganha uma janela na agenda (js/nucleo/agenda.js): os 6
+ * cards chegam ao Backlog na abertura e o prazo de todos é a data da missão.
+ *
+ * Ajuste de balanceamento da 1.0 (ver README): as missões que pediam 3 projetos eram
+ * cumpridas em 98–100% das partidas simuladas. Todas pedem 4 de 6, e todas têm
+ * exatamente um projeto de 2 rodadas (o "projeto grande").
  */
 (function (global) {
   'use strict';

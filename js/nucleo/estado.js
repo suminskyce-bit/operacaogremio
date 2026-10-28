@@ -4,7 +4,8 @@
  * Princípio: os números exibidos são SEMPRE derivados do estado real.
  * Caixa, prestígio e tradição não são contadores soltos: são a soma do livro-caixa
  * (`estado.livro`), onde cada lançamento tem rodada, tipo e motivo.
- * A ocupação de cada pessoa também é derivada (equipes dos cards, revisões, doença).
+ * A ocupação de cada pessoa também é derivada (responsáveis e equipes dos cards,
+ * revisões da rodada, doença, temporários).
  */
 (function (global) {
   'use strict';
@@ -21,6 +22,18 @@
     if (!condicao) throw new ErroDeRegra(mensagem);
   }
 
+  function R() { return OG.regras; }
+
+  // ---------- Partida ----------
+
+  function totalRodadas(estado) {
+    return estado.config.duracao;
+  }
+
+  function ultimaRodada(estado) {
+    return estado.rodada >= estado.config.duracao;
+  }
+
   // ---------- Dados ----------
 
   function projeto(id) {
@@ -31,8 +44,8 @@
     return projeto(carta.projetoId);
   }
 
-  function missao(estado) {
-    return OG.dados.missoesPorId[estado.missaoId] || null;
+  function missaoPorId(id) {
+    return OG.dados.missoesPorId[id] || null;
   }
 
   let mapaPessoas = null;
@@ -55,9 +68,15 @@
 
   function todasPessoas() {
     const idx = indicePessoas();
-    return Object.keys(idx).map(function (id) {
-      return idx[id];
-    });
+    return Object.keys(idx).map(function (id) { return idx[id]; });
+  }
+
+  function coordenadores() {
+    return OG.dados.coordenadores.map(function (p) { return pessoa(p.id); });
+  }
+
+  function voluntarios() {
+    return OG.dados.voluntarios.map(function (p) { return pessoa(p.id); });
   }
 
   function ehCoordenador(id) {
@@ -65,13 +84,75 @@
     return !!p && p.papel === 'coordenador';
   }
 
+  function ehVoluntario(id) {
+    const p = pessoa(id);
+    return !!p && p.papel === 'voluntario';
+  }
+
+  // ---------- Área do coordenador e especialidade do voluntário ----------
+
+  /** O projeto está na área do coordenador? (Sumindo, o Geral, sempre está.) */
+  function naArea(coordId, proj) {
+    const c = pessoa(coordId);
+    if (!c || c.papel !== 'coordenador' || !proj) return false;
+    return !!c.area.coringa || c.area.categorias.indexOf(proj.categoria) !== -1;
+  }
+
+  /** Voluntário especialista na categoria do projeto (ou em algum risco dele, ou coringa). */
   function ehEspecialista(p, proj) {
-    if (!p || !proj) return false;
+    if (!p || !proj || p.papel !== 'voluntario') return false;
     const e = p.especialidade || {};
     if (e.coringa) return true;
     if (e.categorias && e.categorias.indexOf(proj.categoria) !== -1) return true;
     if (e.riscos && e.riscos.some(function (r) { return proj.riscos.indexOf(r) !== -1; })) return true;
     return false;
+  }
+
+  // ---------- Força de trabalho e tempo ----------
+
+  function forcaNecessaria(proj) {
+    return proj.trabalhadores + R().FORCA_EXTRA;
+  }
+
+  function forcaVoluntario(pessoaId, proj) {
+    const p = pessoa(pessoaId);
+    if (!p || p.papel !== 'voluntario') return 0;
+    return ehEspecialista(p, proj) ? R().FORCA_ESPECIALISTA : R().FORCA_VOLUNTARIO;
+  }
+
+  /** Força de uma equipe (coordenador responsável + voluntários). */
+  function forcaDaEquipe(proj, temCoordenador, equipe) {
+    let total = temCoordenador ? R().FORCA_COORDENADOR : 0;
+    (equipe || []).forEach(function (id) { total += forcaVoluntario(id, proj); });
+    return total;
+  }
+
+  function forcaDaCarta(carta) {
+    return forcaDaEquipe(projetoDaCarta(carta), !!carta.responsavel, carta.equipe);
+  }
+
+  /**
+   * Voluntários "sobrando": quem poderia sair da equipe e a força continuaria suficiente.
+   * Equipe enxuta = ninguém sobrando.
+   */
+  function voluntariosSobrando(proj, equipe) {
+    const total = forcaDaEquipe(proj, true, equipe);
+    const precisa = forcaNecessaria(proj);
+    return (equipe || []).filter(function (id) {
+      return total - forcaVoluntario(id, proj) >= precisa;
+    });
+  }
+
+  /** Rodadas de execução do card com este coordenador responsável. */
+  function tempoComCoordenador(proj, coordId) {
+    return proj.tempo + (naArea(coordId, proj) ? 0 : R().TEMPO_FORA_DA_AREA);
+  }
+
+  /** Rodadas de execução do card (usa o tempo fixado no início, se já começou). */
+  function tempoTotal(carta, coordId) {
+    if (carta.tempoTotal) return carta.tempoTotal;
+    const coord = coordId || carta.responsavel;
+    return coord ? tempoComCoordenador(projetoDaCarta(carta), coord) : projetoDaCarta(carta).tempo;
   }
 
   // ---------- Cards ----------
@@ -89,18 +170,44 @@
       .sort(function (a, b) { return a.ordem - b.ordem; });
   }
 
-  function totalConcluidos(estado) {
-    return cartasNaColuna(estado, 'concluido').length;
+  function entreguesNoPrazo(estado) {
+    return estado.cartas.filter(function (c) { return c.coluna === 'concluido' && c.noPrazo === true; });
   }
 
   // ---------- Recursos (derivados do livro-caixa) ----------
 
   function recursos(estado) {
     const r = { dinheiro: 0, prestigio: 0, tradicao: 0 };
-    estado.livro.forEach(function (l) {
-      r[l.recurso] += l.valor;
-    });
+    estado.livro.forEach(function (l) { r[l.recurso] += l.valor; });
     return r;
+  }
+
+  // ---------- Missões ----------
+
+  function entradaAgenda(estado, missaoId) {
+    for (let i = 0; i < estado.agenda.length; i++) {
+      if (estado.agenda[i].missaoId === missaoId) return estado.agenda[i];
+    }
+    return null;
+  }
+
+  /** Projetos da missão concluídos dentro do prazo (os que contam para o objetivo). */
+  function progressoMissao(estado, missaoId) {
+    return estado.cartas.filter(function (c) {
+      return c.missaoId === missaoId && c.coluna === 'concluido' && c.noPrazo === true;
+    }).length;
+  }
+
+  /** 'futura' | 'aberta' | 'cumprida' | 'perdida' */
+  function situacaoMissao(estado, entrada) {
+    if (entrada.cumprida) return 'cumprida';
+    if (entrada.perdida) return 'perdida';
+    if (entrada.abre > estado.rodada) return 'futura';
+    return 'aberta';
+  }
+
+  function missoesAbertas(estado) {
+    return estado.agenda.filter(function (a) { return situacaoMissao(estado, a) === 'aberta'; });
   }
 
   // ---------- Evento da rodada ----------
@@ -159,7 +266,22 @@
     return t ? t.ateRodada - estado.rodada + 1 : 0;
   }
 
-  function cartaDaPessoa(estado, pessoaId) {
+  /** Card EM ANDAMENTO tocado por este coordenador (no máximo um). */
+  function cartaLideradaPor(estado, coordId) {
+    for (let i = 0; i < estado.cartas.length; i++) {
+      const c = estado.cartas[i];
+      if (c.coluna === 'andamento' && c.responsavel === coordId) return c;
+    }
+    return null;
+  }
+
+  /** Cards em A FAZER sob responsabilidade deste coordenador. */
+  function filaDe(estado, coordId) {
+    return cartasNaColuna(estado, 'afazer').filter(function (c) { return c.responsavel === coordId; });
+  }
+
+  /** Card EM ANDAMENTO em cuja equipe o voluntário está. */
+  function cartaDoVoluntario(estado, pessoaId) {
     for (let i = 0; i < estado.cartas.length; i++) {
       const c = estado.cartas[i];
       if (c.coluna === 'andamento' && c.equipe.indexOf(pessoaId) !== -1) return c;
@@ -173,9 +295,15 @@
     });
   }
 
+  function revisouNestaRodada(estado, coordId) {
+    return estado.revisoresDaRodada.indexOf(coordId) !== -1;
+  }
+
   /**
    * Situação de uma pessoa agora.
-   * codigo: 'ausente' | 'doente' | 'ocupado' | 'revisando' | 'livre'
+   *   coordenador: 'doente' | 'tocando' (projeto em andamento) | 'livre'
+   *   voluntário:  'ausente' | 'doente' | 'ocupado' (em equipe) | 'livre'
+   * Revisar não muda o código: ver revisouNestaRodada.
    */
   function statusPessoa(estado, pessoaId) {
     const p = pessoa(pessoaId);
@@ -185,50 +313,143 @@
     if (estaDoente(estado, pessoaId)) {
       return { codigo: 'doente', texto: 'Com influenza nesta rodada' };
     }
-    const c = cartaDaPessoa(estado, pessoaId);
-    if (c) {
-      return { codigo: 'ocupado', texto: 'Em ' + projetoDaCarta(c).nome, cartaId: c.id };
+    if (p.papel === 'coordenador') {
+      const c = cartaLideradaPor(estado, pessoaId);
+      if (c) return { codigo: 'tocando', texto: 'Tocando ' + projetoDaCarta(c).nome, cartaId: c.id };
+      return { codigo: 'livre', texto: 'Livre para tocar um projeto' };
     }
-    if (estado.revisoresDaRodada.indexOf(pessoaId) !== -1) {
-      return { codigo: 'revisando', texto: 'Revisou um projeto nesta rodada' };
-    }
+    const c = cartaDoVoluntario(estado, pessoaId);
+    if (c) return { codigo: 'ocupado', texto: 'Na equipe de ' + projetoDaCarta(c).nome, cartaId: c.id };
     return { codigo: 'livre', texto: 'Disponível' };
   }
 
-  function pessoasLivres(estado) {
-    return todasPessoas().filter(function (p) {
-      return statusPessoa(estado, p.id).codigo === 'livre';
-    });
+  function voluntariosLivres(estado) {
+    return voluntarios().filter(function (p) { return statusPessoa(estado, p.id).codigo === 'livre'; });
   }
 
+  /** Coordenadores que podem COMEÇAR um projeto agora (sem projeto em andamento e com saúde). */
   function coordenadoresLivres(estado) {
-    return pessoasLivres(estado).filter(function (p) {
-      return p.papel === 'coordenador';
-    });
+    return coordenadores().filter(function (p) { return statusPessoa(estado, p.id).codigo === 'livre'; });
   }
 
-  /** Rodada em que um projeto iniciado agora ficaria pronto para revisão e se ainda dá tempo de concluir. */
-  function terminaATempo(estado, c) {
+  /** Pessoas que o evento Influenza pode sortear. */
+  function pessoasLivres(estado) {
+    return todasPessoas().filter(function (p) { return statusPessoa(estado, p.id).codigo === 'livre'; });
+  }
+
+  // ---------- Revisão ----------
+
+  /**
+   * Projeto que fica parado nesta rodada se este coordenador revisar:
+   * o que ele já tocava antes desta rodada. Quem estava livre no começo da rodada
+   * (ou começou o projeto nesta rodada) revisa sem custo.
+   */
+  function projetoParadoSeRevisar(estado, coordId) {
+    const c = cartaLideradaPor(estado, coordId);
+    if (c && c.iniciadoNaRodada !== null && c.iniciadoNaRodada < estado.rodada) return c;
+    return null;
+  }
+
+  /** Motivo pelo qual o coordenador não pode revisar este card agora, ou null. */
+  function impedimentoRevisor(estado, coordId, c) {
+    const p = pessoa(coordId);
+    if (!p) return 'Escolha um coordenador para revisar.';
+    if (p.papel !== 'coordenador') return 'Só coordenadores fazem a revisão. ' + p.nome + ' é voluntário.';
+    if (c && c.responsavel === coordId) return p.nome + ' tocou este projeto: ninguém revisa o próprio trabalho.';
+    if (estaDoente(estado, coordId)) return p.nome + ' está com influenza nesta rodada.';
+    if (revisouNestaRodada(estado, coordId)) return p.nome + ' já revisou um projeto nesta rodada.';
+    return null;
+  }
+
+  // ---------- Prazos ----------
+
+  /**
+   * Rodada em que o card pode ser revisado se a execução andar sem parar a partir de agora,
+   * com este coordenador (ou com o responsável atual).
+   */
+  function rodadaDeRevisaoPrevista(estado, c, coordId) {
+    if (c.coluna === 'revisao') return estado.rodada;
+    if (c.coluna === 'concluido') return c.concluidoNaRodada;
+    const coord = coordId || c.responsavel;
+    const total = c.coluna === 'andamento' ? c.tempoTotal : tempoTotal(c, coord);
+    const restante = total - (c.coluna === 'andamento' ? c.progresso : 0);
+    return estado.rodada + restante;
+  }
+
+  /** Começando (ou seguindo) agora com este coordenador, dá para concluir no prazo? */
+  function terminaNoPrazo(estado, c, coordId) {
+    const r = rodadaDeRevisaoPrevista(estado, c, coordId);
+    return r <= c.prazo && r <= totalRodadas(estado);
+  }
+
+  /** Começando agora, termina antes do fim da partida (mesmo que atrasado)? */
+  function terminaAntesDoFim(estado, c, coordId) {
+    return rodadaDeRevisaoPrevista(estado, c, coordId) <= totalRodadas(estado);
+  }
+
+  /** Melhor tempo possível para o card (com o coordenador mais rápido). */
+  function menorTempo(c) {
     const proj = projetoDaCarta(c);
-    const restante = proj.tempo - c.progresso;
-    // Executa nas rodadas atual..atual+restante-1 e é revisado na rodada seguinte.
-    return estado.rodada + restante <= OG.regras.TOTAL_RODADAS;
+    return coordenadores().reduce(function (m, p) {
+      return Math.min(m, tempoComCoordenador(proj, p.id));
+    }, Infinity);
+  }
+
+  /**
+   * Farol do prazo do card (como o "verde" dos quadros Kanban de verdade):
+   *   'entregue'  verde     concluído no prazo
+   *   'tarde'     cinza     concluído com atraso
+   *   'atrasado'  vermelho  passou do prazo e ainda não foi concluído
+   *   'impossivel' vermelho não começou e já não dá tempo (vai vencer)
+   *   'urgente'   amarelo   tem que começar/andar agora para dar tempo
+   *   'ok'        neutro    dentro do prazo, com folga
+   */
+  function farolDoPrazo(estado, c) {
+    if (c.coluna === 'concluido') return c.noPrazo ? 'entregue' : 'tarde';
+    if (estado.rodada > c.prazo) return 'atrasado';
+    let folga;
+    if (c.coluna === 'backlog' || c.coluna === 'afazer') {
+      const tempo = c.coluna === 'afazer' && c.responsavel ? tempoTotal(c, c.responsavel) : menorTempo(c);
+      folga = c.prazo - (estado.rodada + tempo);
+    } else {
+      folga = c.prazo - rodadaDeRevisaoPrevista(estado, c);
+    }
+    if (folga < 0) return c.coluna === 'backlog' || c.coluna === 'afazer' ? 'impossivel' : 'atrasado';
+    if (folga === 0) return 'urgente';
+    return 'ok';
   }
 
   OG.estado = {
     ErroDeRegra,
     exigir,
+    totalRodadas,
+    ultimaRodada,
     projeto,
     projetoDaCarta,
-    missao,
+    missaoPorId,
     pessoa,
     todasPessoas,
+    coordenadores,
+    voluntarios,
     ehCoordenador,
+    ehVoluntario,
+    naArea,
     ehEspecialista,
+    forcaNecessaria,
+    forcaVoluntario,
+    forcaDaEquipe,
+    forcaDaCarta,
+    voluntariosSobrando,
+    tempoComCoordenador,
+    tempoTotal,
     carta,
     cartasNaColuna,
-    totalConcluidos,
+    entreguesNoPrazo,
     recursos,
+    entradaAgenda,
+    progressoMissao,
+    situacaoMissao,
+    missoesAbertas,
     definicaoEvento,
     eventoAtual,
     eventoAtivo,
@@ -236,11 +457,21 @@
     registroTemporario,
     presente,
     rodadasRestantes,
-    cartaDaPessoa,
+    cartaLideradaPor,
+    filaDe,
+    cartaDoVoluntario,
     estaDoente,
+    revisouNestaRodada,
     statusPessoa,
-    pessoasLivres,
+    voluntariosLivres,
     coordenadoresLivres,
-    terminaATempo,
+    pessoasLivres,
+    projetoParadoSeRevisar,
+    impedimentoRevisor,
+    rodadaDeRevisaoPrevista,
+    terminaNoPrazo,
+    terminaAntesDoFim,
+    menorTempo,
+    farolDoPrazo,
   };
 })(globalThis);

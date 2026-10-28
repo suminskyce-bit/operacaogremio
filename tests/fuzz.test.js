@@ -1,48 +1,93 @@
 /*
  * Fuzzing: um "jogador caótico" manda milhares de ações aleatórias (válidas e
- * inválidas, repetidas, fora de hora) e, depois de CADA ação, conferimos as
- * invariantes do jogo. Se alguma regra puder ser furada, este teste pega.
+ * inválidas, repetidas, fora de hora, com pessoas ocupadas ou inexistentes) e, depois
+ * de CADA ação, conferimos as invariantes do jogo. Se alguma regra puder ser furada,
+ * este teste pega.
  */
 'use strict';
 const test = require('node:test');
-const { OG, E, assert } = require('./ajudantes.js');
+const { OG, E, assert, novo } = require('./ajudantes.js');
+const { criarRng } = require('./politicas.js');
 
 function invariantes(e, contexto) {
-  const v = OG.persistencia.validarEstado(e);
+  const v = OG.persistencia.validarEstado(JSON.parse(JSON.stringify(e)));
   assert.ok(v.ok, contexto + ': estado inválido -> ' + v.motivo);
-  const r = E.recursos(e);
-  assert.ok(r.dinheiro >= 0, contexto + ': caixa negativo');
-  assert.ok(E.cartasNaColuna(e, 'andamento').length <= OG.regras.LIMITE_EM_ANDAMENTO, contexto + ': WIP estourado');
+  assert.ok(E.recursos(e).dinheiro >= 0, contexto + ': caixa negativo');
+
+  const andamento = E.cartasNaColuna(e, 'andamento');
+  const tocando = {};
   const ocupadas = {};
-  E.cartasNaColuna(e, 'andamento').forEach((c) => c.equipe.forEach((id) => {
-    assert.ok(!ocupadas[id], contexto + ': ' + id + ' em dois projetos');
-    ocupadas[id] = true;
-    const st = E.statusPessoa(e, id).codigo;
-    assert.equal(st, 'ocupado', contexto + ': ' + id + ' em projeto mas status ' + st);
-  }));
-  // Cada card concluído recebeu retorno exatamente uma vez; custo cobrado no máximo uma vez.
-  e.cartas.forEach((c) => {
-    const proj = E.projetoDaCarta(c);
-    const retornos = e.livro.filter((l) => l.tipo === 'retorno' && l.descricao === 'Concluído: ' + proj.nome).length;
-    assert.equal(retornos, c.coluna === 'concluido' ? 1 : 0, contexto + ': retorno de ' + proj.nome);
-    const custos = e.livro.filter((l) => l.tipo === 'custo' && l.descricao === 'Início: ' + proj.nome).length;
-    assert.ok(custos <= 1, contexto + ': custo cobrado ' + custos + 'x em ' + proj.nome);
+  andamento.forEach((c) => {
+    assert.ok(!tocando[c.responsavel], contexto + ': ' + c.responsavel + ' tocando dois projetos');
+    tocando[c.responsavel] = true;
+    assert.equal(E.statusPessoa(e, c.responsavel).codigo, 'tocando', contexto);
+    c.equipe.forEach((pid) => {
+      assert.ok(E.ehVoluntario(pid), contexto + ': coordenador na equipe');
+      assert.ok(!ocupadas[pid], contexto + ': ' + pid + ' em duas equipes');
+      ocupadas[pid] = true;
+      assert.equal(E.statusPessoa(e, pid).codigo, 'ocupado', contexto + ': status de ' + pid);
+    });
   });
-  assert.ok(e.livro.filter((l) => l.tipo === 'recompensa').length <= 3, contexto + ': recompensa repetida');
+  E.coordenadores().forEach((p) => {
+    assert.ok(E.filaDe(e, p.id).length <= OG.regras.FILA_POR_COORDENADOR + 1, contexto + ': fila de ' + p.id);
+  });
+  // Cada card: custo cobrado no máximo uma vez; retorno só se concluído, exatamente uma vez.
+  e.cartas.forEach((c) => {
+    const custos = e.livro.filter((l) => l.tipo === 'custo' && l.cartaId === c.id).length;
+    assert.ok(custos <= 1, contexto + ': custo cobrado ' + custos + 'x em ' + c.id);
+    const retornos = e.livro.filter((l) => l.tipo === 'retorno' && l.cartaId === c.id).length;
+    assert.equal(retornos, c.coluna === 'concluido' ? 1 : 0, contexto + ': retorno de ' + c.id);
+  });
+  // Recompensa de cada missão no máximo uma vez.
+  e.agenda.forEach((a) => {
+    const n = e.livro.filter((l) => l.tipo === 'recompensa' && l.missaoId === a.missaoId).length;
+    assert.ok(n <= 3, contexto + ': recompensa repetida de ' + a.missaoId);
+  });
 }
 
-const PESSOAS = () => E.todasPessoas().map((p) => p.id).concat(['ninguem']);
+/** Equipe ao acaso que respeita as regras (para o fuzzing avançar de verdade). */
+function equipeValida(e, c, rnd) {
+  const proj = E.projetoDaCarta(c);
+  const precisa = E.forcaNecessaria(proj);
+  const cand = OG.kanban.candidatos(e, c).map((p) => p.id).sort(() => rnd() - 0.5);
+  const equipe = [];
+  cand.forEach((pid) => { if (E.forcaDaEquipe(proj, true, equipe) < precisa) equipe.push(pid); });
+  let sobra = E.voluntariosSobrando(proj, equipe);
+  while (sobra.length) {
+    equipe.splice(equipe.indexOf(sobra[0]), 1);
+    sobra = E.voluntariosSobrando(proj, equipe);
+  }
+  return equipe;
+}
 
 function acaoAleatoria(e, rnd) {
-  const cartas = e.cartas.map((c) => c.id).concat(['inexistente']);
   const pick = (lista) => lista[Math.floor(rnd() * lista.length)];
-  const pessoas = PESSOAS();
-  const tipos = ['CONFIRMAR_EVENTO', 'PLANEJAR', 'DESPLANEJAR', 'INICIAR', 'REVISAR', 'COMPLETAR_EQUIPE',
-    'USAR_MUTIRAO', 'ENCERRAR_RODADA', 'RESOLVER_DECISAO', 'AVANCAR', 'INICIAR', 'REVISAR', 'PLANEJAR',
-    'CANCELAR_ENCERRAMENTO'];
-  const tipo = pick(tipos);
+  const pessoas = E.todasPessoas().map((p) => p.id).concat(['ninguem', undefined]);
+  const coords = OG.dados.coordenadores.map((p) => p.id);
+  const cartas = e.cartas.map((c) => c.id).concat(['inexistente', 'c1', 'c999']);
+  const tipos = ['CONFIRMAR_EVENTO', 'PLANEJAR', 'PLANEJAR', 'PLANEJAR', 'TROCAR_RESPONSAVEL', 'DESPLANEJAR',
+    'INICIAR', 'INICIAR', 'INICIAR', 'INICIAR', 'REVISAR', 'REVISAR', 'REVISAR', 'COMPLETAR_EQUIPE', 'USAR_MUTIRAO',
+    'ENCERRAR_RODADA', 'ENCERRAR_RODADA', 'RESOLVER_DECISAO', 'CANCELAR_ENCERRAMENTO', 'AVANCAR', 'AVANCAR'];
+  // Na maior parte das vezes, algo que faz sentido na fase (para as partidas irem longe);
+  // no resto, qualquer coisa (para testar as recusas fora de hora).
+  const porFase = {
+    evento: ['CONFIRMAR_EVENTO'],
+    decisao: ['RESOLVER_DECISAO', 'RESOLVER_DECISAO', 'RESOLVER_DECISAO', 'CANCELAR_ENCERRAMENTO'],
+    resumo: ['AVANCAR'],
+    planejamento: ['PLANEJAR', 'PLANEJAR', 'PLANEJAR', 'PLANEJAR', 'TROCAR_RESPONSAVEL', 'DESPLANEJAR',
+      'INICIAR', 'INICIAR', 'INICIAR', 'INICIAR', 'INICIAR', 'REVISAR', 'REVISAR', 'REVISAR', 'REVISAR',
+      'COMPLETAR_EQUIPE', 'USAR_MUTIRAO', 'USAR_MUTIRAO'],
+  };
+  let tipo;
+  if (e.fase === 'planejamento') {
+    // Encerrar a rodada é raro: cada rodada recebe dezenas de tentativas.
+    if (rnd() < 0.03) tipo = 'ENCERRAR_RODADA';
+    else tipo = rnd() < 0.8 ? pick(porFase.planejamento) : pick(tipos.filter((t) => t !== 'ENCERRAR_RODADA'));
+  } else {
+    tipo = rnd() < 0.75 && porFase[e.fase] ? pick(porFase[e.fase]) : pick(tipos);
+  }
   const acao = { tipo: tipo };
-  if (rnd() < 0.1) acao.rodada = 1 + Math.floor(rnd() * 5);
+  if (rnd() < 0.08) acao.rodada = 1 + Math.floor(rnd() * 6);
   switch (tipo) {
     case 'CONFIRMAR_EVENTO': {
       const op = OG.eventos.opcoesEvento(e);
@@ -51,51 +96,70 @@ function acaoAleatoria(e, rnd) {
     }
     case 'RESOLVER_DECISAO': {
       const dec = OG.eventos.decisaoFimRodada(e);
-      acao.escolha = rnd() < 0.85 && dec ? pick(dec.opcoes).id : pick(['pagar', 'parar', 'voltar:mateada', 'x']);
+      acao.escolha = rnd() < 0.85 && dec ? pick(dec.opcoes).id : pick(['pagar', 'parar', 'voltar:c1', 'parar:c2', 'x']);
+      break;
+    }
+    case 'PLANEJAR':
+    case 'TROCAR_RESPONSAVEL': {
+      const backlog = e.cartas.filter((c) => c.coluna === (tipo === 'PLANEJAR' ? 'backlog' : 'afazer'));
+      acao.cartaId = rnd() < 0.8 && backlog.length ? pick(backlog).id : pick(cartas);
+      acao.responsavel = rnd() < 0.85 ? pick(coords) : pick(pessoas);
       break;
     }
     case 'INICIAR': {
-      const n = Math.floor(rnd() * 4);
-      const livres = E.pessoasLivres(e).map((p) => p.id);
-      acao.equipe = [];
-      for (let i = 0; i < n; i++) acao.equipe.push(rnd() < 0.8 && livres.length ? pick(livres) : pick(pessoas));
-      acao.cartaId = pick(cartas);
+      const afazer = e.cartas.filter((c) => c.coluna === 'afazer');
+      const c = rnd() < 0.8 && afazer.length ? pick(afazer) : E.carta(e, pick(cartas));
+      acao.cartaId = c ? c.id : 'inexistente';
+      const sorte = rnd();
+      if (c && sorte < 0.55) {
+        acao.equipe = equipeValida(e, c, rnd);
+      } else if (c && sorte < 0.75) {
+        const t = OG.planejador.montarEquipe(e, c);
+        acao.equipe = t ? t.equipe : [];
+      } else if (sorte < 0.97) {
+        acao.equipe = [];
+        const n = Math.floor(rnd() * 5);
+        for (let i = 0; i < n; i++) acao.equipe.push(pick(pessoas));
+      } else {
+        acao.equipe = pick([null, 'agatha', { x: 1 }, undefined]);
+      }
       break;
     }
-    case 'REVISAR':
-      acao.cartaId = pick(cartas);
-      acao.revisorId = rnd() < 0.7 ? pick(OG.dados.coordenadores).id : pick(pessoas);
+    case 'REVISAR': {
+      const rev = e.cartas.filter((c) => c.coluna === 'revisao');
+      acao.cartaId = rnd() < 0.85 && rev.length ? pick(rev).id : pick(cartas);
+      acao.revisorId = rnd() < 0.8 ? pick(coords) : pick(pessoas);
       break;
-    case 'COMPLETAR_EQUIPE':
-      acao.cartaId = pick(cartas);
-      acao.pessoaId = pick(pessoas);
+    }
+    case 'COMPLETAR_EQUIPE': {
+      // Equipe desfalcada é rara (temporário que foi embora com o projeto parado): mira nela quando existe.
+      const fracas = e.cartas.filter((c) => c.coluna === 'andamento' && E.forcaDaCarta(c) < E.forcaNecessaria(E.projetoDaCarta(c)));
+      const alvo = rnd() < 0.8 && fracas.length ? pick(fracas) : null;
+      acao.cartaId = alvo ? alvo.id : pick(cartas);
+      const cand = alvo ? OG.kanban.candidatos(e, alvo) : [];
+      acao.pessoaId = cand.length && rnd() < 0.8 ? pick(cand).id : pick(pessoas);
       break;
+    }
     default:
       acao.cartaId = pick(cartas);
   }
   return acao;
 }
 
-function rngDeTeste(semente) {
-  let a = semente >>> 0;
-  return function () {
-    a = (a + 0x6d2b79f5) >>> 0;
-    let t = Math.imul(a ^ (a >>> 15), 1 | a);
-    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
-
-test('fuzzing: ações aleatórias nunca quebram as regras do jogo', () => {
+test('fuzzing: ações aleatórias nunca quebram as regras do jogo (todas as durações)', () => {
   let totalAcoes = 0;
   let aceitas = 0;
   let partidasCompletas = 0;
-  OG.dados.missoes.forEach((m, mi) => {
-    for (let s = 1; s <= 30; s++) {
-      const rnd = rngDeTeste(s * 7 + mi * 1000);
-      let e = OG.motor.criarPartida(m.id, s * 13 + mi, { caixaApertado: s % 3 === 0 });
-      invariantes(e, m.id + '#' + s + ' início');
-      for (let i = 0; i < 600 && e.fase !== 'fim'; i++) {
+  const aceitasPorTipo = {};
+  const planos = [[4, 60], [8, 16], [10, 12], [26, 4]];
+  planos.forEach(([duracao, partidas], pi) => {
+    for (let s = 1; s <= partidas; s++) {
+      const rnd = criarRng(s * 7 + pi * 1000 + duracao);
+      const missao = OG.dados.missoes[(s + pi) % OG.dados.missoes.length].id;
+      let e = OG.motor.criarPartida({ missaoId: missao, duracao: duracao, semente: s * 13 + pi, caixaApertado: s % 3 === 0 });
+      invariantes(e, duracao + '/' + missao + '#' + s + ' início');
+      const limite = 150 * duracao;
+      for (let i = 0; i < limite && e.fase !== 'fim'; i++) {
         const acao = acaoAleatoria(e, rnd);
         const antes = JSON.stringify(e);
         let r;
@@ -103,35 +167,55 @@ test('fuzzing: ações aleatórias nunca quebram as regras do jogo', () => {
         totalAcoes++;
         if (r.ok) {
           aceitas++;
+          aceitasPorTipo[acao.tipo] = (aceitasPorTipo[acao.tipo] || 0) + 1;
           assert.equal(JSON.stringify(e), antes, 'o estado antigo foi alterado por ' + JSON.stringify(acao));
           e = r.estado;
-          invariantes(e, m.id + '#' + s + ' após ' + JSON.stringify(acao));
+          invariantes(e, duracao + '/' + missao + '#' + s + ' após ' + JSON.stringify(acao));
         } else {
           assert.equal(r.estado, e);
-          assert.equal(JSON.stringify(e), antes);
+          assert.equal(JSON.stringify(e), antes, 'ação recusada alterou o estado: ' + JSON.stringify(acao));
+          assert.equal(typeof r.erro, 'string');
         }
       }
       if (e.fase === 'fim') partidasCompletas++;
     }
   });
-  console.log('fuzzing: ' + totalAcoes + ' ações (' + aceitas + ' aceitas), ' + partidasCompletas + ' partidas completas');
-  // O fuzzing precisa de fato exercitar o jogo.
-  assert.ok(totalAcoes > 50000, 'ações: ' + totalAcoes);
+  console.log('fuzzing: ' + totalAcoes + ' ações (' + aceitas + ' aceitas), ' + partidasCompletas + ' partidas completas; aceitas por tipo: ' + JSON.stringify(aceitasPorTipo));
+  // O fuzzing precisa de fato exercitar o jogo inteiro.
+  assert.ok(totalAcoes > 15000, 'ações: ' + totalAcoes);
   assert.ok(aceitas > 5000, 'aceitas: ' + aceitas);
-  assert.ok(partidasCompletas > 200, 'partidas completas: ' + partidasCompletas);
+  assert.ok(partidasCompletas > 80, 'partidas completas: ' + partidasCompletas);
+  // (COMPLETAR_EQUIPE depende de um temporário ir embora no meio de um projeto parado:
+  // é raro aqui e tem teste próprio em equipe.test.js.)
+  ['PLANEJAR', 'TROCAR_RESPONSAVEL', 'DESPLANEJAR', 'INICIAR', 'REVISAR', 'USAR_MUTIRAO',
+    'RESOLVER_DECISAO', 'CANCELAR_ENCERRAMENTO'].forEach((t) => {
+    assert.ok((aceitasPorTipo[t] || 0) > 0, 'o fuzzing nunca conseguiu ' + t);
+  });
 });
 
-test('mover rápido várias vezes: repetir a mesma ação não duplica efeito', () => {
-  let e = OG.motor.criarPartida('junina', 3);
-  e = OG.motor.aplicar(e, { tipo: 'CONFIRMAR_EVENTO', escolha: OG.eventos.opcoesEvento(e).find((o) => o.habilitado).id }).estado;
-  if (e.fase !== 'planejamento') return;
-  e = OG.motor.aplicar(e, { tipo: 'PLANEJAR', cartaId: 'pescaria' }).estado;
-  const acao = { tipo: 'INICIAR', cartaId: 'pescaria', equipe: ['wliam'] };
-  const r1 = OG.motor.aplicar(e, acao);
+test('clique repetido: repetir a mesma ação não duplica o efeito', () => {
+  let e = novo({ missaoId: 'junina' }); // baralho só com Divulgação Viral: nada atrapalha
+  e = OG.motor.aplicar(e, { tipo: 'CONFIRMAR_EVENTO' }).estado;
+  const pescaria = e.cartas.find((c) => c.projetoId === 'pescaria').id;
+  const planejar = { tipo: 'PLANEJAR', cartaId: pescaria, responsavel: 'jv' };
+  const p1 = OG.motor.aplicar(e, planejar);
+  assert.ok(p1.ok, p1.erro);
+  assert.equal(OG.motor.aplicar(p1.estado, planejar).ok, false);
+  const iniciar = { tipo: 'INICIAR', cartaId: pescaria, equipe: ['wesley', 'wliam'] };
+  const r1 = OG.motor.aplicar(p1.estado, iniciar);
   assert.ok(r1.ok, r1.erro);
-  const r2 = OG.motor.aplicar(r1.estado, acao);
-  const r3 = OG.motor.aplicar(r1.estado, acao);
-  assert.equal(r2.ok, false);
-  assert.equal(r3.ok, false);
+  assert.equal(OG.motor.aplicar(r1.estado, iniciar).ok, false);
+  assert.equal(OG.motor.aplicar(r1.estado, iniciar).ok, false);
   assert.equal(r1.estado.livro.filter((l) => l.tipo === 'custo').length, 1);
+  // Revisar duas vezes: o retorno entra uma vez.
+  let f = OG.motor.aplicar(r1.estado, { tipo: 'ENCERRAR_RODADA' }).estado;
+  if (f.fase === 'decisao') f = OG.motor.aplicar(f, { tipo: 'RESOLVER_DECISAO', escolha: OG.eventos.decisaoFimRodada(f).opcoes.find((o) => o.habilitado).id }).estado;
+  f = OG.motor.aplicar(f, { tipo: 'AVANCAR' }).estado;
+  f = OG.motor.aplicar(f, { tipo: 'CONFIRMAR_EVENTO', escolha: OG.eventos.opcoesEvento(f).find((o) => o.habilitado).id }).estado;
+  const revisar = { tipo: 'REVISAR', cartaId: pescaria, revisorId: 'sumindo' };
+  const v1 = OG.motor.aplicar(f, revisar);
+  assert.ok(v1.ok, v1.erro);
+  assert.equal(OG.motor.aplicar(v1.estado, revisar).ok, false);
+  assert.equal(OG.motor.aplicar(v1.estado, Object.assign({}, revisar, { revisorId: 'antune' })).ok, false);
+  assert.equal(v1.estado.livro.filter((l) => l.tipo === 'retorno').length, 1);
 });

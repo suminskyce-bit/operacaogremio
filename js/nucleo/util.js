@@ -37,6 +37,19 @@
     return copia;
   }
 
+  /**
+   * Sorteio separado, derivado da semente da partida. A agenda e os pedidos usam um
+   * sorteio próprio, que não depende das ações do jogador nem dos eventos: assim a
+   * mesma semente sempre gera a mesma agenda (e o planejador pode jogar "a mesma partida").
+   */
+  function criarSorteio(semente, sal) {
+    let h = ((Number(semente) >>> 0) ^ Math.imul((sal >>> 0) || 0x9e3779b9, 0x85ebca6b)) >>> 0;
+    h = Math.imul(h ^ (h >>> 16), 0x7feb352d) >>> 0;
+    h = Math.imul(h ^ (h >>> 15), 0x846ca68b) >>> 0;
+    h = (h ^ (h >>> 16)) >>> 0;
+    return { rng: h || 1 };
+  }
+
   /** O estado é 100% JSON, então a clonagem por JSON é suficiente e segura. */
   function clonar(obj) {
     return JSON.parse(JSON.stringify(obj));
@@ -55,6 +68,13 @@
     return (negativo ? '−' : '') + 'R$' + NBSP + inteiro + ',' + centavos;
   }
 
+  /** Versão curta para os cards: sem centavos quando o valor é inteiro (R$ 40). */
+  function formatarDinheiroCurto(valor) {
+    if (Math.round(valor) !== valor) return formatarDinheiro(valor);
+    const inteiro = Math.abs(valor).toString().replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+    return (valor < 0 ? '−' : '') + 'R$' + NBSP + inteiro;
+  }
+
   /** Valor com sinal, para históricos: +R$ 80,00 / −R$ 40,00 */
   function formatarDinheiroComSinal(valor) {
     if (valor > 0) return '+' + formatarDinheiro(valor);
@@ -71,6 +91,12 @@
     return itens.slice(0, -1).join(', ') + ' e ' + itens[itens.length - 1];
   }
 
+  /** Alternativas em português: ["a","b","c"] -> "a, b ou c" */
+  function listaPtOu(itens) {
+    if (itens.length <= 1) return itens.join('');
+    return itens.slice(0, -1).join(', ') + ' ou ' + itens[itens.length - 1];
+  }
+
   function plural(n, singular, pluralTexto) {
     return n === 1 ? singular : pluralTexto;
   }
@@ -79,11 +105,14 @@
     aleatorio,
     inteiroAleatorio,
     embaralhar,
+    criarSorteio,
     clonar,
     formatarDinheiro,
+    formatarDinheiroCurto,
     formatarDinheiroComSinal,
     formatarPontos,
     listaPt,
+    listaPtOu,
     plural,
     NBSP,
   };

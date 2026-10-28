@@ -1,25 +1,62 @@
 /*
  * regras.js — números que definem a partida. Mudou o balanceamento? É aqui.
+ * Depois de mexer, rode `npm test` e `npm run simular`.
  */
 (function (global) {
   'use strict';
   const OG = (global.OG = global.OG || {});
 
+  function congelarLista(lista) {
+    return Object.freeze(lista.map(function (x) { return Object.freeze(x); }));
+  }
+
   OG.regras = Object.freeze({
-    VERSAO_ESTADO: 1,
+    VERSAO_ESTADO: 2,
 
-    TOTAL_RODADAS: 4,
-    EVENTOS_POR_PARTIDA: 4,
-    LIMITE_EM_ANDAMENTO: 2,
+    // ---------------- Duração ----------------
+    // missoes: quantas missões entram na agenda (a escolhida + sorteadas).
+    DURACOES: congelarLista([
+      { rodadas: 4, nome: 'Rápida', tempo: '≈ 20 min', missoes: 1 },
+      { rodadas: 8, nome: 'Média', tempo: '≈ 40 min', missoes: 2 },
+      { rodadas: 10, nome: 'Longa', tempo: '≈ 50 min', missoes: 3 },
+      { rodadas: 26, nome: 'Ano letivo', tempo: '≈ 2 h', missoes: 10 },
+    ]),
+    DURACAO_PADRAO: 4,
 
+    // Cada missão fica aberta por 4 rodadas: os 6 projetos chegam na abertura e o prazo
+    // de todos é a "data" da missão (abertura + 3).
+    JANELA_MISSAO: 4,
+
+    // Pedidos avulsos que chegam ao Backlog no começo de cada rodada (menos a última).
+    PEDIDOS_POR_RODADA: 2,
+
+    // ---------------- Coordenadores ----------------
+    // Cada coordenador é responsável por até 2 cards em A Fazer e toca 1 por vez.
+    FILA_POR_COORDENADOR: 2,
+    // Coordenador tocando projeto fora da própria área: +1 rodada de execução.
+    TEMPO_FORA_DA_AREA: 1,
+
+    // ---------------- Força de trabalho ----------------
+    // Força necessária de um projeto = trabalhadores do card + 3.
+    // O coordenador responsável soma 1; voluntário soma 1; voluntário especialista soma 2.
+    FORCA_EXTRA: 3,
+    FORCA_COORDENADOR: 1,
+    FORCA_VOLUNTARIO: 1,
+    FORCA_ESPECIALISTA: 2,
+
+    // ---------------- Eventos ----------------
+    // Com até 5 projetos ao mesmo tempo, "só um" travava a rodada inteira.
+    LIMITE_INICIOS_CHIMARRAO: 2,
+    LIMITE_MOVIMENTOS_PROVAS: 2,
+
+    // ---------------- Dinheiro e pontos ----------------
     CAIXA_INICIAL: 500,
-    // Opção "Caixa apertado" (Configurações): com R$ 500 o caixa nunca trava a partida
-    // nas simulações (menor caixa ~R$ 250). Com R$ 200 o dinheiro vira decisão de verdade.
+    // Opção "Caixa apertado" (Configurações).
     CAIXA_APERTADO: 200,
     PRESTIGIO_INICIAL: 20,
     TRADICAO_INICIAL: 20,
 
-    // Especialista na equipe: desconto no custo do projeto (por pessoa).
+    // Voluntário especialista na equipe: desconto no custo do projeto (por pessoa).
     DESCONTO_ESPECIALISTA: 10,
 
     // Trabalhador temporário (evento "Patrício Ajudou"): esta rodada e a próxima.
@@ -28,37 +65,44 @@
     // Despesa obrigatória sem caixa: o que faltar vira desgaste de prestígio.
     REAIS_POR_PONTO_DE_DESGASTE: 10,
 
+    // Projeto revisado depois do prazo: só metade do retorno, sem prestígio nem tradição.
+    FRACAO_RETORNO_ATRASADO: 0.5,
+
     // Pontuação final.
     REAIS_POR_PONTO: 10,
     PONTOS_POR_PROJETO: 5,
 
-    COLUNAS: Object.freeze([
-      Object.freeze({ id: 'backlog', nome: 'Backlog', dica: 'Projetos da missão ainda não escolhidos.' }),
-      Object.freeze({ id: 'afazer', nome: 'A Fazer', dica: 'Escolhidos e prontos para começar.' }),
-      Object.freeze({ id: 'andamento', nome: 'Em Andamento', dica: 'Sendo executados. Máximo de 2.', limite: 2 }),
-      Object.freeze({ id: 'revisao', nome: 'Revisão', dica: 'Execução terminada. Um coordenador confere.' }),
-      Object.freeze({ id: 'concluido', nome: 'Concluído', dica: 'Pronto! Retorno e pontos creditados.' }),
+    COLUNAS: congelarLista([
+      { id: 'backlog', nome: 'Backlog', dica: 'Projetos e pedidos esperando alguém assumir.' },
+      { id: 'afazer', nome: 'A Fazer', dica: 'Já têm coordenador responsável. Até 2 por coordenador.' },
+      { id: 'andamento', nome: 'Em Andamento', dica: 'Sendo executados. Cada coordenador toca 1 por vez.' },
+      { id: 'revisao', nome: 'Revisão', dica: 'Execução terminada. Outro coordenador confere.' },
+      { id: 'concluido', nome: 'Concluído', dica: 'Pronto! Retorno e pontos creditados.' },
     ]),
 
     /*
-     * Classificações, em % da META da missão (aproveitamento).
-     *
-     * Por que não pontos absolutos? Com a fórmula de pontuação, só o caixa e os
-     * recursos iniciais já valem 90 pontos: com os limites originais em pontos
-     * (100/80/60/40), quem não fizesse NADA terminaria como "GRÊMIO DESTAQUE".
-     * Além disso, cada missão tem um potencial diferente (a Farroupilha rende
-     * tradição, a Junina não). Então os mesmos números 100/80/60/40 passaram a ser
-     * porcentagem de APROVEITAMENTO:
-     *   pontos conquistados na partida ÷ pontos que o melhor plano possível conquistaria
-     * ("conquistados" = pontuação final − pontos iniciais; o melhor plano é calculado
-     * a partir dos próprios cards em pontuacao.js, sem eventos).
+     * Classificação pelo APROVEITAMENTO:
+     *   pontos conquistados na partida ÷ pontos que o planejador do jogo conquistaria
+     *   na MESMA partida (mesma agenda e mesmos pedidos), sem imprevistos.
+     * "Conquistados" = pontuação final − pontos com que o Grêmio começou.
+     * Faixas calibradas na simulação (npm run simular): quem faz o fluxo certo mas põe
+     * coordenador e equipe ao acaso fica perto de 55–65% (SOBREVIVEU); quem escolhe bem
+     * o coordenador de cada card passa de 85%.
      */
-    CLASSIFICACOES: Object.freeze([
-      Object.freeze({ minimo: 100, nome: 'GRÊMIO LENDÁRIO' }),
-      Object.freeze({ minimo: 80, nome: 'GRÊMIO DESTAQUE' }),
-      Object.freeze({ minimo: 60, nome: 'GRÊMIO APROVADO' }),
-      Object.freeze({ minimo: 40, nome: 'GRÊMIO SOBREVIVEU' }),
-      Object.freeze({ minimo: -Infinity, nome: 'A DIREÇÃO QUER CONVERSAR' }),
+    CLASSIFICACOES: congelarLista([
+      { minimo: 100, nome: 'GRÊMIO LENDÁRIO' },
+      { minimo: 85, nome: 'GRÊMIO DESTAQUE' },
+      { minimo: 70, nome: 'GRÊMIO APROVADO' },
+      { minimo: 50, nome: 'GRÊMIO SOBREVIVEU' },
+      { minimo: -Infinity, nome: 'A DIREÇÃO QUER CONVERSAR' },
     ]),
+  });
+
+  /** Funções de apoio (OG.regras é congelado, então ficam aqui). */
+  OG.regrasUtil = Object.freeze({
+    /** Dados da duração (4, 8, 10 ou 26 rodadas), ou null. */
+    duracao: function (rodadas) {
+      return OG.regras.DURACOES.find(function (d) { return d.rodadas === rodadas; }) || null;
+    },
   });
 })(globalThis);

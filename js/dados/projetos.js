@@ -1,35 +1,44 @@
 /*
- * projetos.js — catálogo de cards de projeto.
+ * projetos.js — catálogo de cards.
  *
  * custo: pago UMA vez ao entrar em EM ANDAMENTO
- * tempo: rodadas de execução (1 ou 2)
- * trabalhadores: pessoas necessárias para executar
+ * tempo: rodadas de execução com um coordenador da área (fora da área: +1)
+ * trabalhadores: tamanho do projeto. A força necessária é trabalhadores + 3
+ *                (regras.FORCA_EXTRA): o coordenador soma 1, voluntários somam 1 ou 2.
  * retorno: dinheiro recebido UMA vez ao chegar em CONCLUÍDO (receita, não lucro!)
- * prestigio / tradicao: pontos recebidos UMA vez ao chegar em CONCLUÍDO
+ * prestigio / tradicao: pontos recebidos UMA vez ao chegar em CONCLUÍDO no prazo
  * novo: true = card de apoio criado para completar 6 cards na missão
- *       (valores seguem a mesma curva de custo/retorno dos cards originais)
+ *
+ * tipo 'missao': cards das missões (valores da especificação).
+ * tipo 'pedido': pedidos avulsos que chegam durante a partida, com prazo curto.
+ *                Mesma curva de custo/retorno (retorno entre 2,0 e 2,8 vezes o custo).
  */
 (function (global) {
   'use strict';
   const OG = (global.OG = global.OG || {});
   OG.dados = OG.dados || {};
 
-  function p(id, nome, categoria, riscos, custo, tempo, trabalhadores, retorno, prestigio, tradicao, descricao, novo) {
-    return Object.freeze({
-      id: id,
-      nome: nome,
-      categoria: categoria,
-      riscos: Object.freeze(riscos),
-      custo: custo,
-      tempo: tempo,
-      trabalhadores: trabalhadores,
-      retorno: retorno,
-      prestigio: prestigio,
-      tradicao: tradicao,
-      descricao: descricao,
-      novo: !!novo,
-    });
+  function criar(tipo) {
+    return function (id, nome, categoria, riscos, custo, tempo, trabalhadores, retorno, prestigio, tradicao, descricao, novo) {
+      return Object.freeze({
+        id: id,
+        tipo: tipo,
+        nome: nome,
+        categoria: categoria,
+        riscos: Object.freeze(riscos),
+        custo: custo,
+        tempo: tempo,
+        trabalhadores: trabalhadores,
+        retorno: retorno,
+        prestigio: prestigio,
+        tradicao: tradicao,
+        descricao: descricao,
+        novo: !!novo,
+      });
+    };
   }
+  const p = criar('missao');
+  const pedido = criar('pedido');
 
   const lista = [
     // ---------------- Festa Farroupilha ----------------
@@ -155,6 +164,60 @@
       'Provas malucas entre as turmas, valendo pontos.'),
     p('premiacao', 'Premiação', 'logistica', ['fornecedor'], 40, 1, 1, 100, 10, 0,
       'Troféus, medalhas e discurso emocionado no final.'),
+
+    // ================= Pedidos avulsos (chegam durante a partida) =================
+    // Divulgação
+    pedido('mural', 'Mural do Grêmio', 'divulgacao', [], 20, 1, 1, 50, 10, 0,
+      'Recados, avisos e memes aprovados pela coordenação no corredor do T11.'),
+    pedido('radio', 'Rádio do Intervalo', 'divulgacao', ['equipamento'], 40, 1, 1, 100, 10, 0,
+      'Caixinha de som, playlist votada pela gurizada e recados ao vivo.'),
+    pedido('podcast', 'Podcast do Grêmio', 'divulgacao', ['equipamento'], 50, 2, 1, 130, 15, 0,
+      'Três episódios gravados no laboratório, com entrevistas pelos corredores.'),
+    pedido('caixa_sugestoes', 'Caixa de Sugestões', 'divulgacao', [], 20, 1, 1, 40, 10, 0,
+      'Uma urna no saguão e resposta para cada sugestão na semana seguinte.'),
+    // Logística e vendas
+    pedido('rifa', 'Rifa da Formatura', 'logistica', [], 30, 1, 1, 80, 5, 0,
+      'Bilhetes vendidos de sala em sala. O prêmio é uma cesta de chocolates.'),
+    pedido('pastel', 'Venda de Pastel no Intervalo', 'logistica', ['fornecedor'], 40, 1, 2, 100, 5, 0,
+      'Pastel de carne e de queijo, com fila dobrando o corredor.'),
+    pedido('agasalho', 'Campanha do Agasalho', 'logistica', [], 20, 1, 2, 40, 15, 0,
+      'Caixas de doação em todas as salas e triagem no fim da semana.'),
+    pedido('bingo', 'Bingo Beneficente', 'logistica', ['mesas'], 40, 1, 2, 100, 10, 0,
+      'Cartelas, globo emprestado e prêmios doados pelo comércio do bairro.'),
+    // Estrutura
+    pedido('horta', 'Horta da Escola', 'estrutura', [], 40, 2, 1, 90, 5, 5,
+      'Canteiros atrás do ginásio, com cidreira, alecrim e tempero para a cantina.'),
+    pedido('limpeza_patio', 'Mutirão de Limpeza do Pátio', 'estrutura', [], 20, 1, 2, 40, 10, 0,
+      'Vassoura, luva e música alta para deixar o pátio brilhando.'),
+    pedido('goleiras', 'Conserto das Goleiras', 'estrutura', ['quadra'], 50, 1, 1, 110, 10, 0,
+      'Rede nova e solda nas traves da quadra.'),
+    // Esporte
+    pedido('pingue_pongue', 'Torneio de Pingue-Pongue', 'esporte', ['mesas'], 30, 1, 1, 80, 10, 0,
+      'Mesa no pátio coberto e fila de desafiantes no recreio.'),
+    pedido('embaixadinhas', 'Copa de Embaixadinhas', 'esporte', ['quadra'], 20, 1, 1, 50, 10, 0,
+      'Quem fizer mais embaixadinhas leva medalha de chocolate.'),
+    pedido('interclasses', 'Tabela do Interclasses', 'esporte', [], 20, 1, 1, 50, 5, 0,
+      'Sorteio das chaves, horários dos jogos e súmulas impressas.'),
+    pedido('corrida', 'Corrida Rústica', 'esporte', [], 60, 2, 2, 150, 15, 0,
+      'Percurso em volta da escola, com hidratação e chegada no portão principal.'),
+    // Cultura
+    pedido('cine_debate', 'Cine-Debate', 'cultura', ['equipamento'], 30, 1, 1, 80, 10, 0,
+      'Filme no auditório e roda de conversa depois. Pipoca opcional.'),
+    pedido('grafite', 'Oficina de Grafite', 'cultura', [], 40, 1, 1, 100, 10, 0,
+      'Um muro autorizado, latas de tinta e muita cor.'),
+    pedido('troca_livros', 'Feira de Troca de Livros', 'cultura', ['mesas'], 20, 1, 1, 50, 5, 5,
+      'Traga um livro, leve outro. Os gibis acabam primeiro.'),
+    pedido('roda_chimarrao', 'Roda de Chimarrão no Recreio', 'cultura', ['fornecedor'], 20, 1, 1, 50, 0, 10,
+      'Cuia passando de mão em mão e causo gaúcho até bater o sinal.'),
+    pedido('aulao', 'Aulão para as Provas', 'cultura', [], 30, 1, 2, 70, 15, 0,
+      'Veteranos dando revisão no contraturno, com resumo no quadro.'),
+    // Games
+    pedido('torneio_celular', 'Torneio de Jogo de Celular', 'games', [], 30, 1, 1, 80, 10, 0,
+      'Chaves no grupo da turma e final no telão do auditório.'),
+    pedido('lan_party', 'LAN no Laboratório', 'games', ['equipamento'], 60, 1, 2, 150, 10, 0,
+      'Computadores em rede, cabos por todo lado e torneio até o sinal bater.'),
+    pedido('desafio_danca', 'Desafio de Dança no Videogame', 'games', ['equipamento'], 40, 1, 1, 100, 10, 0,
+      'Tapete, telão e muita coreografia errada.'),
   ];
 
   const porId = {};
@@ -163,6 +226,7 @@
     porId[proj.id] = proj;
   });
 
-  OG.dados.projetos = Object.freeze(lista);
+  OG.dados.projetos = Object.freeze(lista.filter(function (x) { return x.tipo === 'missao'; }));
+  OG.dados.pedidos = Object.freeze(lista.filter(function (x) { return x.tipo === 'pedido'; }));
   OG.dados.projetosPorId = Object.freeze(porId);
 })(globalThis);

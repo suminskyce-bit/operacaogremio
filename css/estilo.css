@@ -45,6 +45,13 @@
   --cat-esporte: #2f9e43;
   --cat-games: #7548d8;
   --cat-logistica: #0d948b;
+  /* Versões escuras das categorias: texto branco por cima com contraste AA. */
+  --cat-cultura-forte: #c2185b;
+  --cat-estrutura-forte: #1f6fb2;
+  --cat-divulgacao-forte: #a85f00;
+  --cat-esporte-forte: #23793a;
+  --cat-games-forte: #6a3fc9;
+  --cat-logistica-forte: #0a7068;
 
   --col-backlog: #f25c5c;
   --col-afazer: #f2ae2e;
@@ -211,9 +218,10 @@ dl, dd { margin: 0; }
   grid-template-columns: auto auto 1fr auto;
   grid-template-areas:
     'marca rodada recursos acoes'
-    'missao missao evento evento';
+    'linha2 linha2 linha2 linha2';
   padding: 12px var(--gutter) 10px;
 }
+.hud-linha2 { grid-area: linha2; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px; min-width: 0; }
 .hud-marca { grid-area: marca; display: flex; align-items: center; gap: 14px; min-width: 0; }
 .hud-marca .marca { font-size: 15px; }
 .hud-titulo { font-weight: 900; font-stretch: 115%; font-size: 20px; line-height: 1.05; letter-spacing: -0.01em; }
@@ -239,11 +247,23 @@ dl, dd { margin: 0; }
 .recurso.pulsa { animation: pulsa 600ms ease; }
 @keyframes pulsa { 0% { transform: scale(1); } 35% { transform: scale(1.08); } 100% { transform: scale(1); } }
 .hud-acoes { grid-area: acoes; display: flex; gap: 8px; justify-content: flex-end; }
-.hud-missao { grid-area: missao; display: flex; align-items: center; gap: 10px; font-size: 14px; min-width: 0; }
-.barra-missao { width: 120px; height: 8px; background: rgba(255, 255, 255, 0.25); border-radius: 4px; overflow: hidden; flex: none; }
+.hud-missoes { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; min-width: 0; }
+.lista-missoes { display: flex; flex-wrap: wrap; gap: 8px; min-width: 0; }
+.chip-missao {
+  display: inline-flex; align-items: center; gap: 8px; min-height: 32px; padding: 4px 12px; border-radius: 999px;
+  font-size: 13px; line-height: 1.2; background: rgba(255, 255, 255, 0.12); border: 2px solid rgba(255, 255, 255, 0.35); color: #fff;
+}
+.chip-missao.aberta { border-color: rgba(255, 255, 255, 0.8); }
+.chip-missao.aberta.urgente { border-color: var(--amarelo); }
+.chip-missao.futura { opacity: 0.85; border-style: dashed; }
+.chip-missao.cumprida { background: #e5f6ea; color: #145c33; border-color: #a6e2b3; }
+.chip-missao.perdida { background: #fde5e8; color: #8f1424; border-color: #f2b3bc; }
+.chip-agenda { background: transparent; border-color: rgba(255, 255, 255, 0.45); color: #fff; }
+.barra-missao { width: 70px; height: 7px; background: rgba(255, 255, 255, 0.25); border-radius: 4px; overflow: hidden; flex: none; }
 .barra-missao span { display: block; height: 100%; background: var(--amarelo); }
-.hud-missao.cumprida .barra-missao span { background: #7be38a; }
-.hud-evento { grid-area: evento; display: flex; justify-content: flex-end; gap: 8px; flex-wrap: wrap; }
+.barra-rodadas { display: block; width: 110px; height: 6px; margin-top: 3px; border-radius: 3px; background: rgba(255, 255, 255, 0.28); overflow: hidden; }
+.barra-rodadas span { display: block; height: 100%; background: #fff; }
+.hud-evento { display: flex; justify-content: flex-end; gap: 8px; flex-wrap: wrap; margin-left: auto; }
 .chip {
   display: inline-flex; align-items: center; gap: 6px; border-radius: 999px; padding: 4px 12px; min-height: 32px;
   font-size: 13px; font-weight: 600; border: 2px solid transparent; line-height: 1.2;
@@ -316,12 +336,29 @@ button.chip { cursor: pointer; }
 }
 .card[draggable='true'] { cursor: grab; }
 .card.sendo-arrastado { opacity: 0.45; }
-.card-cat-cultura { --cat: var(--cat-cultura); }
-.card-cat-estrutura { --cat: var(--cat-estrutura); }
-.card-cat-divulgacao { --cat: var(--cat-divulgacao); }
-.card-cat-esporte { --cat: var(--cat-esporte); }
-.card-cat-games { --cat: var(--cat-games); }
-.card-cat-logistica { --cat: var(--cat-logistica); }
+.card-cat-cultura { --cat: var(--cat-cultura); --cat-forte: var(--cat-cultura-forte); }
+.card-cat-estrutura { --cat: var(--cat-estrutura); --cat-forte: var(--cat-estrutura-forte); }
+.card-cat-divulgacao { --cat: var(--cat-divulgacao); --cat-forte: var(--cat-divulgacao-forte); }
+.card-cat-esporte { --cat: var(--cat-esporte); --cat-forte: var(--cat-esporte-forte); }
+.card-cat-games { --cat: var(--cat-games); --cat-forte: var(--cat-games-forte); }
+.card-cat-logistica { --cat: var(--cat-logistica); --cat-forte: var(--cat-logistica-forte); }
+.card-etiquetas { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; min-width: 0; }
+.etiqueta {
+  display: inline-flex; align-items: center; gap: 4px; font-size: 11px; font-weight: 800; line-height: 1.3;
+  border-radius: 6px; padding: 2px 7px; max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.etiqueta .ic { width: 13px; height: 13px; }
+.etiqueta-cat { background: var(--cat-forte, var(--roxo)); color: #fff; }
+.etiqueta-missao { background: var(--missao, var(--roxo)); color: #fff; }
+.etiqueta-pedido { background: #fff3cc; color: #6e4b00; box-shadow: inset 0 0 0 1px #f2c94c; }
+.card-etiquetas .card-riscos { margin-left: auto; }
+.card-badges { display: flex; flex-wrap: wrap; gap: 3px 10px; font-size: 12.5px; color: var(--tinta-2); }
+.card-badges li { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; }
+.card-badges .ic { width: 14px; height: 14px; }
+.card-badges .badge-dinheiro { color: var(--tinta); font-weight: 700; }
+.card-badges .badge-dinheiro .ic { color: var(--caixa); }
+.card-badges .badge-prestigio .ic { color: var(--prestigio); }
+.card-badges .badge-tradicao .ic { color: var(--tradicao); }
 .card-topo { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
 .card-categoria { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; font-weight: 700; color: var(--cat); }
 .card-riscos { display: inline-flex; gap: 4px; color: var(--tinta-2); }
@@ -398,6 +435,7 @@ button.chip { cursor: pointer; }
 .status { font-size: 11.5px; font-weight: 700; border-radius: 6px; padding: 2px 7px; white-space: nowrap; }
 .status-livre { background: #e5f6ea; color: #17663a; }
 .status-ocupado { background: #e2f1fc; color: #12588a; }
+.status-tocando { background: #e2f1fc; color: #12588a; }
 .status-revisando { background: #efe5fb; color: #5a2b9b; }
 .status-doente { background: #fde5e8; color: #a3192b; }
 .status-ausente { background: #f1edf3; color: #7d6d87; }
@@ -417,6 +455,7 @@ button.chip { cursor: pointer; }
 .historico-rodada li { padding: 4px 0; border-bottom: 1px solid var(--lavanda); }
 .historico-rodada li.missao { color: var(--bom); font-weight: 700; }
 .historico-rodada li.evento { color: #6b2a8a; }
+.historico-rodada li.atraso, .historico-rodada li.vencido { color: #8a4a00; }
 
 .tabela-financas { width: 100%; border-collapse: collapse; font-size: 13px; }
 .tabela-financas th { text-align: left; font-size: 12px; color: var(--tinta-2); font-weight: 700; padding: 4px 4px; border-bottom: 2px solid var(--linha); }
@@ -435,6 +474,7 @@ button.chip { cursor: pointer; }
 .nav-celular { display: none; }
 .trocar-coluna { display: none; }
 .botao-equipe-lateral { display: none; }
+.botao-equipe-lateral .so-largo { margin-left: 2px; }
 
 /* ---------------- Modais ---------------- */
 .modal-fundo {
@@ -511,7 +551,8 @@ details.indisponiveis ul { display: grid; gap: 4px; margin-top: 6px; font-size: 
 .resumo-linhas .avancou .ic { color: var(--bom); }
 .resumo-linhas .parado .ic { color: var(--ruim); }
 .resumo-linhas .equipe .ic { color: var(--col-andamento); }
-.resumo-linhas .evento .ic, .resumo-linhas .info .ic { color: var(--roxo); }
+.resumo-linhas .evento .ic, .resumo-linhas .info .ic, .resumo-linhas .missao .ic { color: var(--roxo); }
+.resumo-linhas .vencido .ic { color: var(--alerta); }
 .mini-recursos { display: flex; flex-wrap: wrap; gap: 8px; }
 .mini-recursos span { background: var(--lavanda); border-radius: 999px; padding: 4px 12px; font-size: 13.5px; font-weight: 700; display: inline-flex; gap: 6px; align-items: center; }
 
@@ -557,6 +598,106 @@ details.indisponiveis ul { display: grid; gap: 4px; margin-top: 6px; font-size: 
 .lista-projetos-fim .situacao { margin-left: auto; font-size: 12.5px; font-weight: 700; white-space: nowrap; }
 .fim-acoes { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 18px; }
 
+/* ---------------- Nova partida: duração ---------------- */
+.preparar-bloco { padding: 0 clamp(16px, 4vw, 40px) 16px; color: #fff; max-width: 1320px; }
+.preparar-bloco h2 { font-weight: 900; font-stretch: 112%; font-size: clamp(19px, 2.6vw, 24px); line-height: 1.1; margin-bottom: 12px; }
+.preparar-bloco h2:focus { outline: none; }
+.preparar-nota { color: #f1e6f7; max-width: 76ch; font-size: 14.5px; margin-top: 10px; }
+.duracoes { display: grid; gap: 12px; grid-template-columns: repeat(4, minmax(0, 1fr)); max-width: 1000px; }
+.opcao-duracao {
+  position: relative; display: flex; align-items: center; gap: 12px; padding: 12px 14px; border-radius: 16px; cursor: pointer;
+  background: rgba(255, 255, 255, 0.1); border: 3px solid rgba(255, 255, 255, 0.35); color: #fff; min-height: 84px;
+}
+.opcao-duracao:hover { border-color: #fff; }
+.opcao-duracao.marcada { background: var(--papel); color: var(--tinta); border-color: var(--amarelo); }
+.opcao-duracao input { position: absolute; opacity: 0; pointer-events: none; }
+.opcao-duracao:focus-within { outline: 3px solid var(--amarelo); outline-offset: 2px; }
+.duracao-num { font-weight: 900; font-stretch: 125%; font-size: 40px; line-height: 1; min-width: 1.4em; text-align: center; }
+.duracao-texto { display: grid; gap: 1px; font-size: 13px; line-height: 1.25; }
+.duracao-texto strong { font-size: 16px; }
+.opcao-duracao.marcada .duracao-texto span { color: var(--tinta-2); }
+.cartaz-missao h3 { font-weight: 900; font-stretch: 115%; font-size: 23px; line-height: 1.05; letter-spacing: -0.01em; color: var(--tinta); }
+
+/* ---------------- Coordenação (faixa acima do quadro) ---------------- */
+.coordenacao { padding: 0 var(--gutter) 10px; }
+.coordenacao-lista { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; }
+.coord {
+  display: flex; align-items: center; gap: 10px; min-width: 0;
+  background: var(--papel); color: var(--tinta); border-radius: 14px; padding: 8px 10px; border-left: 6px solid var(--bom);
+}
+.coord-tocando { border-left-color: var(--col-andamento); }
+.coord-doente { border-left-color: var(--ruim); }
+.coord .avatar { width: 40px; height: 40px; }
+.coord-texto { display: grid; gap: 2px; min-width: 0; }
+.coord-nome { font-weight: 800; font-size: 14.5px; line-height: 1.15; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.coord-area { font-weight: 600; font-size: 12px; color: var(--tinta-2); }
+.coord-detalhe { font-size: 12px; line-height: 1.25; color: var(--tinta-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.coord-extra { display: flex; flex-wrap: wrap; gap: 4px 8px; font-size: 11.5px; color: var(--tinta-2); align-items: center; }
+
+/* ---------------- Card: prazo, origem, responsável ---------------- */
+.farol {
+  display: flex; align-items: center; gap: 6px; font-size: 12.5px; font-weight: 700; line-height: 1.25;
+  border-radius: 8px; padding: 4px 8px; background: var(--lavanda); color: var(--roxo-escuro);
+}
+.farol .ic { width: 15px; height: 15px; }
+.farol.inline { display: inline-flex; padding: 0 6px; font-size: inherit; }
+.farol-verde { background: #dff5e4; color: #135c2f; box-shadow: inset 0 0 0 2px #7bd38e; }
+.farol-amarelo { background: #fff3cc; color: #6e4b00; box-shadow: inset 0 0 0 2px #f2c94c; }
+.farol-vermelho { background: #fde2e5; color: #8f1424; box-shadow: inset 0 0 0 2px #f0a3ad; }
+.farol-cinza { background: #efebf1; color: #5f5368; }
+.farol-neutro { background: var(--lavanda); color: var(--roxo-escuro); }
+.card-area { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--tinta-2); }
+.card-area .ic { width: 14px; height: 14px; }
+.card-responsavel { display: flex; align-items: center; gap: 8px; font-size: 13px; line-height: 1.25; }
+.card-responsavel .rotulo { color: var(--tinta-2); font-size: 12px; }
+.card-responsavel .fora-area { font-size: 11.5px; font-weight: 800; color: #8a4a00; background: #fff1dd; border-radius: 6px; padding: 1px 6px; white-space: nowrap; }
+.avatar.avatar-mini { width: 26px; height: 26px; font-size: 10px; border-width: 2px; }
+.card.em-risco { box-shadow: 0 0 0 2px #f0a3ad; }
+.card-acoes .botao span { white-space: normal; }
+
+/* Concluídos antigos: lista compacta */
+.concluidos-antigos summary { cursor: pointer; font-weight: 700; font-size: 13px; color: var(--tinta-2); padding: 6px 4px; }
+.concluidos-antigos ol { display: grid; gap: 6px; margin-top: 4px; }
+.card.card-compacto { flex-direction: row; align-items: center; justify-content: space-between; gap: 8px; padding: 6px 8px; border-width: 1px; border-left-width: 6px; background: #f7fbf7; }
+.card-compacto .card-titulo { font-size: 13px; font-weight: 700; min-width: 0; }
+.card-compacto.tarde { background: #f4f1f6; }
+.compacto-info { display: inline-flex; align-items: center; gap: 4px; font-size: 11.5px; color: var(--tinta-2); white-space: nowrap; }
+.ic-verde { color: var(--bom); }
+
+/* Equipe: medidor de força */
+.medidor-forca { display: grid; gap: 6px; background: var(--lavanda); border-radius: 12px; padding: 10px 12px; }
+.medidor-topo { display: flex; justify-content: space-between; gap: 8px; flex-wrap: wrap; font-size: 14px; }
+.medidor-topo span { color: var(--tinta-2); font-size: 13px; }
+.segmentos-forca span { height: 12px; }
+.segmentos-forca span.feito { background: var(--alerta); }
+.medidor-forca.completo .segmentos-forca span.feito { background: var(--bom); }
+.segmentos-forca span.sobra { background: var(--ruim); }
+.segmentos-forca span.extra { background: #7bd38e; }
+.medidor-forca.sobrando .medidor-topo span { color: var(--ruim); font-weight: 700; }
+
+/* Tabelas dos modais */
+.tabela-tempos, .tabela-agenda { width: 100%; border-collapse: collapse; font-size: 13.5px; margin-top: 6px; }
+.tabela-tempos td, .tabela-agenda td, .tabela-agenda th { padding: 6px 6px; border-bottom: 1px solid var(--lavanda); text-align: left; vertical-align: top; }
+.tabela-agenda thead th { font-size: 12px; color: var(--tinta-2); border-bottom: 2px solid var(--linha); }
+.tabela-tempos td:last-child { text-align: right; font-weight: 700; white-space: nowrap; }
+.tabela-agenda td:nth-child(2), .tabela-agenda td:nth-child(3) { white-space: nowrap; }
+.tabela-tempos tr.atual td { font-weight: 800; color: var(--roxo-escuro); }
+.pessoa-status { display: grid; gap: 3px; justify-items: end; }
+
+/* Fim de jogo */
+.lista-missoes-fim { display: grid; gap: 8px; margin-top: 10px; font-size: 14px; }
+.lista-missoes-fim li { display: flex; gap: 8px; align-items: center; justify-content: space-between; }
+.missao-nome { min-width: 0; }
+.numeros-fim { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 8px; margin-top: 14px; }
+.numeros-fim li { background: var(--lavanda); border-radius: 12px; padding: 8px 10px; display: grid; }
+.numeros-fim strong { font-size: 22px; font-weight: 900; font-stretch: 115%; line-height: 1.1; }
+.numeros-fim span { font-size: 12.5px; color: var(--tinta-2); }
+.gente-fim { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 14px; margin-top: 12px; font-size: 13px; }
+.gente-fim ul { display: grid; gap: 6px; align-content: start; }
+.gente-fim li { display: flex; align-items: center; gap: 8px; }
+.gente-fim li.parado { color: var(--ruim); }
+.inicio-membro .cargo.area { color: #fff; opacity: 0.85; }
+
 /* ---------------- Avisos (toasts) ---------------- */
 .avisos { position: fixed; z-index: 60; left: 50%; bottom: 18px; transform: translateX(-50%); display: grid; gap: 8px; width: min(560px, calc(100% - 24px)); pointer-events: none; }
 .aviso {
@@ -568,10 +709,13 @@ details.indisponiveis ul { display: grid; gap: 4px; margin-top: 6px; font-size: 
 .aviso-erro { background: #8f1424; }
 .aviso-bom { background: #145c33; }
 .aviso.saindo { opacity: 0; transition: opacity 250ms ease; }
+/* Com uma janela aberta, os avisos sobem e não bloqueiam cliques nos botões da janela. */
+body.com-modal .avisos { top: 12px; bottom: auto; }
+body.com-modal .aviso { pointer-events: none; opacity: 0.96; }
 
 /* ---------------- Responsivo ---------------- */
-/* Abaixo de 1300px as 5 colunas e a lateral não cabem juntas: a equipe vira gaveta. */
-@media (max-width: 1300px) {
+/* Abaixo de 1600px as 5 colunas e a lateral não cabem bem juntas: equipe e diário viram gaveta. */
+@media (max-width: 1599px) {
   .jogo-corpo { grid-template-columns: minmax(0, 1fr); }
   .lateral {
     position: fixed; top: 0; right: 0; bottom: 0; z-index: 30; width: min(380px, 92vw); max-height: none;
@@ -585,14 +729,27 @@ details.indisponiveis ul { display: grid; gap: 4px; margin-top: 6px; font-size: 
 }
 .fechar-lateral { display: none !important; align-self: flex-end; }
 
+@media (max-width: 1100px) {
+  .coordenacao-lista { display: flex; overflow-x: auto; scroll-snap-type: x proximity; padding-bottom: 4px; scrollbar-width: thin; }
+  .coord { flex: 0 0 230px; scroll-snap-align: start; }
+  .hud {
+    grid-template-columns: auto 1fr auto;
+    grid-template-areas: 'marca marca acoes' 'rodada recursos recursos' 'linha2 linha2 linha2';
+  }
+  .hud-recursos { justify-content: flex-end; }
+  .botao-equipe-lateral .so-largo { display: none; }
+}
+
 @media (max-width: 860px) {
+  .duracoes { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .gente-fim { grid-template-columns: 1fr; }
   .hud {
     grid-template-columns: 1fr auto;
-    grid-template-areas: 'marca acoes' 'rodada rodada' 'recursos recursos' 'missao missao' 'evento evento';
+    grid-template-areas: 'marca acoes' 'rodada rodada' 'recursos recursos' 'linha2 linha2';
   }
   .hud-rodada { justify-content: flex-start; }
   .hud-recursos { justify-content: flex-start; }
-  .hud-evento { justify-content: flex-start; }
+  .hud-evento { justify-content: flex-start; margin-left: 0; }
   .fim-grade { grid-template-columns: 1fr; }
 }
 
@@ -602,13 +759,15 @@ details.indisponiveis ul { display: grid; gap: 4px; margin-top: 6px; font-size: 
   .hud {
     padding-top: 10px; gap: 8px 10px;
     grid-template-columns: auto 1fr auto;
-    grid-template-areas: 'marca marca acoes' 'rodada recursos recursos' 'missao missao missao' 'evento evento evento';
+    grid-template-areas: 'marca marca acoes' 'rodada recursos recursos' 'linha2 linha2 linha2';
   }
   .hud-recursos { justify-content: flex-end; gap: 6px; flex-wrap: nowrap; }
   .hud-rodada .numero { font-size: 26px; }
-  .hud-rodada .rotulo, .hud-rodada .pips { display: none; }
-  .hud-missao { font-size: 13px; }
-  .barra-missao { width: 80px; }
+  .hud-rodada .rotulo, .hud-rodada .pips, .hud-rodada .barra-rodadas { display: none; }
+  .chip-missao { font-size: 12.5px; }
+  .chip-missao.futura { display: none; }
+  .chip-agenda .detalhe-agenda { display: none; }
+  .barra-missao { width: 50px; }
   .faixa-evento { font-size: 13px; padding: 8px 12px; }
   .faixa-evento .estado-regra { font-size: 12.5px; }
   .hud-titulo { font-size: 17px; }
@@ -645,6 +804,10 @@ details.indisponiveis ul { display: grid; gap: 4px; margin-top: 6px; font-size: 
   .quadro::-webkit-scrollbar, .trocar-coluna::-webkit-scrollbar { display: none; }
   .coluna { flex: 0 0 86%; scroll-snap-align: center; min-height: 60vh; }
   .faixa-evento { margin: 0 var(--gutter) 10px; }
+  .coordenacao { padding-bottom: 8px; }
+  .coord { flex-basis: 200px; padding: 6px 8px; }
+  .coord .avatar { width: 34px; height: 34px; }
+  .tela-jogo.aba-equipe .coordenacao, .tela-jogo.aba-diario .coordenacao { display: none; }
 
   .nav-celular {
     display: flex; position: fixed; left: 0; right: 0; bottom: 0; z-index: 35;
@@ -666,10 +829,20 @@ details.indisponiveis ul { display: grid; gap: 4px; margin-top: 6px; font-size: 
   .modal-corpo { padding: 8px 16px; }
   .modal-rodape { padding: 12px 16px 16px; }
   .modal-rodape .botao { flex: 1 1 100%; }
+  .opcao { flex-wrap: wrap; }
+  .opcao-texto { flex: 1 1 calc(100% - 90px); }
+  .opcao-tags { flex: 1 1 100%; justify-content: flex-start; padding-left: 32px; }
+  .tabela-agenda th, .tabela-agenda td { padding: 6px 4px; font-size: 12.5px; }
   .carta-evento h3 { font-size: 22px; }
   .inicio-membro .avatar { width: 60px; height: 60px; }
   .inicio-membro .avatar-iniciais { font-size: 20px; }
   .avisos { bottom: 84px; }
+}
+
+@media (max-width: 420px) {
+  .duracoes { grid-template-columns: 1fr; }
+  .opcao-duracao { min-height: 64px; }
+  .duracao-num { font-size: 32px; }
 }
 
 @media (prefers-reduced-motion: reduce) {

@@ -1,0 +1,7 @@
+node_modules/
+public/
+dist/
+tests/e2e/prints/
+.vercel/
+.DS_Store
+Thumbs.db
