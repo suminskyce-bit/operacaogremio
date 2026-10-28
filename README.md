@@ -26,9 +26,14 @@ com tudo dentro (fontes e fotos incluídas). É só abrir com duplo clique.
 
 ## Publicar na internet
 
-**Vercel (pelo GitHub):** os arquivos `index.html`, `package.json` e `vercel.json` precisam ficar **na raiz do repositório**.
+**No ar:** https://operacao-gremio-mesquita.vercel.app
+
+O projeto `operacao-gremio-mesquita` do Vercel está ligado ao repositório `suminskyce-bit/operacaogremio`.
+**Todo envio para a branch `main` publica sozinho** em produção. Envios para outras branches viram prévias.
+
+**Para publicar em outro lugar pelo Vercel (pelo GitHub):** os arquivos `index.html`, `package.json` e `vercel.json` precisam ficar **na raiz do repositório**.
 No Vercel: **Add New → Project**, escolha o repositório e **Deploy**. O `vercel.json` já define o build (`npm run build`),
-a pasta publicada (`public`) e o tipo de projeto (*Other*). Nada mudou na publicação em relação à versão 1.0.1.
+a pasta publicada (`public`) e o tipo de projeto (*Other*).
 
 **GitHub Pages (sem build):** **Settings → Pages → Deploy from a branch → `main` / `(root)`**.
 
@@ -171,6 +176,8 @@ Para o teste de interface: `npm install --no-save playwright && npx playwright i
   **10 larguras de 320 a 1920 px sem rolagem lateral**; caixa apertado; salvo adulterado e salvo da 1.0; console sem erros.
   Os 18 casos do modo rápido também passam no **arquivo único** e na pasta que o **Vercel** gera.
 - **Vercel CLI 65.4.0** (local, numa cópia limpa): `vercel build` → *Build completed successfully*, com `index.html`, `css`, `js` e `assets`.
+- **Site no ar** (28/10/2026, commit `494268d`): os **31 arquivos** servidos em produção têm o **mesmo SHA-1** do build local
+  testado, conferido num navegador real. `package.json`, `README.md`, `vercel.json`, `tools/` e `tests/` não são publicados (404).
 
 ### Simulação (`npm run simular`, 40 partidas por duração e perfil; 10 nas de 26 rodadas)
 
